@@ -19,6 +19,9 @@ def to_dense_f32(x):
 gene_ad = ad.read_h5ad(GENE_H5AD, backed = 'r')
 tx_ad   = ad.read_h5ad(TX_H5AD, backed ='r')
 
+print(gene_ad)
+print(tx_ad)
+
 # Transform data to tensors
 X_gene = torch.tensor(to_dense_f32(gene_ad.X), dtype=torch.float32)  # (N, G)
 X_tx   = torch.tensor(to_dense_f32(tx_ad.X),   dtype=torch.float32)  # (N, I)
