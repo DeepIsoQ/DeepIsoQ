@@ -3,11 +3,14 @@ import anndata as ad
 import numpy as np
 import torch
 from scipy import sparse
+import os
 
-GENE_H5AD = "/work3/s193518/scIsoPred/data/bulk_processed_genes.h5ad"
-TX_H5AD   = "/work3/s193518/scIsoPred/data/bulk_processed_transcripts.h5ad"
+RUNDIR = os.path.join(os.environ["BLACKHOLE"], os.environ["USER"])
+GENE_H5AD = f"{RUNDIR}/bulk_processed_genes.h5ad"
+TX_H5AD   = f"{RUNDIR}/bulk_processed_transcripts.h5ad"
+OUT_PT    = f"{RUNDIR}/data.pt"
 
-
+print("Starting data preprocessing...")
 def to_dense_f32(x):
     if hasattr(x, "to_memory"):     
         x = x.to_memory()        
@@ -17,9 +20,12 @@ def to_dense_f32(x):
 
 # Load and read data (takes around 8 min)
 gene_ad = ad.read_h5ad(GENE_H5AD, backed = 'r')
-tx_ad   = ad.read_h5ad(TX_H5AD, backed ='r')
 
 print(gene_ad)
+
+tx_ad   = ad.read_h5ad(TX_H5AD, backed ='r')
+
+
 print(tx_ad)
 
 # Transform data to tensors
@@ -39,12 +45,29 @@ print(f"Samples: {Xg_log1p.shape[0]}")
 print(f"Genes:   {Xg_log1p.shape[1]}")
 print(f"Isoforms:{Y_tx.shape[1]}")
 
-# It would be possible to save the tensor so that we don't need to read the h5ad files again. 
-#torch.save({
-#    "Xg_log1p": Xg_log1p,   # (N, G)
-#    "Y_tx": Y_tx,           # (N, I)  
-#    "gene_ids": gene_ids,   # list of G
-#    "tx_ids": tx_ids,       # list of I
-#}, OUT_PT)
+# After loading everything, we also include some more stuff from gene_ad.uns
+gene_to_transcripts   = gene_ad.uns["gene_to_transcripts"]
+gene_n_transcripts    = gene_ad.uns["gene_n_transcripts"]
+multi_isoform_genes   = gene_ad.uns["multi_isoform_genes"]
+single_isoform_genes  = gene_ad.uns["single_isoform_genes"]
+transcript_ids        = gene_ad.uns["transcript_ids"]
+transcript_id_to_index = gene_ad.uns["transcript_id_to_index"]
+transcript_mapping    = gene_ad.uns["transcript_mapping"]
+
+torch.save({
+    "Xg_log1p": Xg_log1p,
+    "Y_tx": Y_tx,
+    "gene_ids": gene_ids,
+    "tx_ids": tx_ids,
+
+    "gene_to_transcripts":   gene_to_transcripts,
+    "gene_n_transcripts":    gene_n_transcripts,
+    "multi_isoform_genes":   multi_isoform_genes,
+    "single_isoform_genes":  single_isoform_genes,
+    "transcript_ids":        transcript_ids,
+    "transcript_id_to_index": transcript_id_to_index,
+    "transcript_mapping":    transcript_mapping,
+}, OUT_PT)
+
 
 
