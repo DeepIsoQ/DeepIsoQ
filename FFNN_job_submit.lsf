@@ -1,23 +1,44 @@
 #!/bin/bash
 #BSUB -J ffnn_iso
 #BSUB -q hpc
-#BSUB -W 04:00
-#BSUB -n 4
-#BSUB -R "rusage[mem=64000] span[hosts=1]"   
+#BSUB -W 60:00
+#BSUB -n 8
+#BSUB -R "rusage[mem=128000] span[hosts=1]"
 #BSUB -cwd /zhome/02/d/213485/DeepIsoQ
-#BSUB -o /zhome/02/d/213485/DeepIsoQ/logs/ffnn_%J.out
+#BSUB -o /zhome/02/d/213485/DeepIsoQ/logs/ffnn_2_%J.out
 
 set -euo pipefail
 mkdir -p /zhome/02/d/213485/DeepIsoQ/logs
 
 source ~/deep_learning/bin/activate
-export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 NUMEXPR_NUM_THREADS=4
-export PYTHONUNBUFFERED=1 MPLBACKEND=Agg
 
-# Point the script to your preprocessed file (ABSOLUTE path!)
-export DATA_PT=/dtu/blackhole/0d/213485/s243310/data.pt
+# --- CPU threading: match -n 8 and pin threads to cores ---
+export OMP_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export NUMEXPR_NUM_THREADS=8
+export OMP_PROC_BIND=close         # keep threads near each other
+export OMP_PLACES=cores
+export KMP_AFFINITY=granularity=fine,compact,1,0
+export MKL_DYNAMIC=FALSE           # avoid dynamic throttling
+export PYTHONUNBUFFERED=1
+export MPLBACKEND=Agg
 
-echo "PWD=$(pwd)"; hostname
+# --- Stage big data to node-local scratch (fast I/O) ---
+SRC_PT=/dtu/blackhole/0d/213485/s243310/data.pt
+STAGE_DIR=${TMPDIR:-/tmp}/ffnn_${LSB_JOBID}
+mkdir -p "$STAGE_DIR"
+cp -f "$SRC_PT" "$STAGE_DIR/data.pt"
+export DATA_PT="$STAGE_DIR/data.pt"
+
+echo "Host: $(hostname)"
+echo "PWD:  $(pwd)"
+echo "Threads: OMP=$OMP_NUM_THREADS MKL=$MKL_NUM_THREADS OPENBLAS=$OPENBLAS_NUM_THREADS"
 ls -lh "$DATA_PT"
 
+# Optionally bind the process to the NUMA node for stability (comment out if NUMA errors)
+# numactl --cpunodebind=0 --membind=0 \
 time python3 /zhome/02/d/213485/DeepIsoQ/FFNN.py
+
+# (Optional) copy outputs back if your script writes to the CWD or stage dir
+# rsync -ah --ignore-existing "$STAGE_DIR"/ /zhome/02/d/213485/DeepIsoQ/run_${LSB_JOBID}/ || true

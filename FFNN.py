@@ -197,7 +197,7 @@ for cfg in configs:
     plt.xlabel("Epoch")
     plt.ylabel("MSE")
     plt.legend()
-    plt.savefig("MSE_epoch.png", dpi=300)
+    plt.savefig(f"MSE_epoch_{cfg}.png", dpi=300)
     plt.show()
 
 print("\nResultados finales:")

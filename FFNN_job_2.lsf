@@ -1,0 +1,23 @@
+#!/bin/bash
+#BSUB -J ffnn_iso
+#BSUB -q hpc
+#BSUB -W 48:00
+#BSUB -n 4
+#BSUB -R "rusage[mem=128000] span[hosts=1]"   
+#BSUB -cwd /zhome/02/d/213485/DeepIsoQ
+#BSUB -o /zhome/02/d/213485/DeepIsoQ/logs/ffnn_%J.out
+
+set -euo pipefail
+mkdir -p /zhome/02/d/213485/DeepIsoQ/logs
+
+source ~/deep_learning/bin/activate
+export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 NUMEXPR_NUM_THREADS=4
+export PYTHONUNBUFFERED=1 MPLBACKEND=Agg
+
+# Point the script to your preprocessed file (ABSOLUTE path!)
+export DATA_PT=/dtu/blackhole/0d/213485/s243310/data.pt
+
+echo "PWD=$(pwd)"; hostname
+ls -lh "$DATA_PT"
+
+time python3 /zhome/02/d/213485/DeepIsoQ/FFNN_2.py
