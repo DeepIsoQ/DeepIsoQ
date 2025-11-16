@@ -1,0 +1,16 @@
+# Ignore model weights
+ffnn_search/results/*.pt
+
+# Ignore all figures
+ffnn_search/results/*.png
+ffnn_search/results/figs_trials/*.png
+
+# Ignore logs
+ffnn_search/logs/*
+!ffnn_search/logs/.gitkeep
+
+# Ignore result artifacts
+ffnn_search/results/*.csv
+ffnn_search/results/*.json
+
+job.lsf
