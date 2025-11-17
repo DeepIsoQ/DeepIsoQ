@@ -26,6 +26,7 @@ What is saved:
 """
 
 import os, json, math, random, csv, time, pathlib
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import numpy as np
 import torch
 import torch.nn as nn
