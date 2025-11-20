@@ -103,6 +103,7 @@ print(f"[INFO] Split sizes: train={len(tr_idx)}  val={len(va_idx)}  test={len(te
 
 batch_size = 64
 eval_batch_size = 100
+
 # The loaders perform the actual work
 train_loader = DataLoader(dset_train, batch_size=batch_size,
                           sampler=stratified_sampler(dset_train.train_labels))
