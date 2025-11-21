@@ -141,7 +141,7 @@ When defining the model the latent layer must act as a bottleneck of information
 
 class VariationalAutoencoder(nn.Module):
     """A Variational Autoencoder with
-    * a Bernoulli observation model `p_\theta(x | z) = B(x | g_\theta(z))`
+    * a Gaussian likelihood observation model `p_\theta(x | z) = N(x | \mu_\theta(z), \sigma^2_\theta(z) I)`
     * a Gaussian prior `p(z) = N(z | 0, I)`
     * a Gaussian posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
     """
@@ -174,7 +174,7 @@ class VariationalAutoencoder(nn.Module):
             nn.ReLU(),
             nn.Linear(in_features=128, out_features=256),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=self.observation_features)
+            nn.Linear(in_features=256, out_features=2*self.observation_features)
         )
 
         # define the parameters of the prior, chosen as p(z) = N(0, I)
@@ -200,10 +200,12 @@ class VariationalAutoencoder(nn.Module):
 
     def observation_model(self, z:Tensor) -> Distribution:
         """return the distribution `p(x|z)`"""
-        px_logits = self.decoder(z)
-        px_logits = px_logits.view(-1, *self.input_shape) # reshape the output
-        return Bernoulli(logits=px_logits, validate_args=False)
-
+        obs_params = self.decoder(z)
+        mu, log_sigma = obs_params.chunk(2, dim=-1)
+        # reshape the output to the input shape
+        mu = mu.view(-1, *self.input_shape) 
+        log_sigma = log_sigma.view(-1, *self.input_shape)
+        return ReparameterizedDiagonalGaussian(mu, log_sigma)
 
     def forward(self, x) -> Dict[str, Any]:
         """compute the posterior q(z|x) (encoder), sample z~q(z|x) and return the distribution p(x|z) (decoder)"""
@@ -220,7 +222,7 @@ class VariationalAutoencoder(nn.Module):
         # sample the posterior using the reparameterization trick: z ~ q(z | x)
         z = qz.rsample()
 
-        # define the observation model p(x|z) = B(x | g(z))
+        # define the observation model p(x|z) = N(x | g(z))
         px = self.observation_model(z)
 
         return {'px': px, 'pz': pz, 'qz': qz, 'z': z}
@@ -235,7 +237,7 @@ class VariationalAutoencoder(nn.Module):
         # sample the prior
         z = pz.rsample()
 
-        # define the observation model p(x|z) = B(x | g(z))
+        # define the observation model p(x|z) = N(x | g(z))
         px = self.observation_model(z)
 
         return {'px': px, 'pz': pz, 'z': z}
@@ -245,9 +247,8 @@ latent_features = 2
 vae = VariationalAutoencoder(images[0].shape, latent_features)
 print(vae)
 
-"""## Implement a module for Variational Inference
-
-**Exercise 1**: implement `elbo` ($\mathcal{L}$) and `beta_elbo` ($\mathcal{L}^\beta$)
+"""
+Implementation of the ELBO and beta ELBO
 """
 
 def reduce(x:Tensor) -> Tensor:
