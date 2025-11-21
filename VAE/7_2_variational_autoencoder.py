@@ -104,6 +104,8 @@ tr_idx, va_idx = train_test_split(trval_idx, test_size=val_rel, random_state=SEE
 # ------------------------------
 # Create datasets
 # ------------------------------
+full_dataset = X
+
 dset_train = Subset(full_dataset, tr_idx)
 dset_val   = Subset(full_dataset, va_idx)
 dset_test  = Subset(full_dataset, te_idx)
@@ -111,26 +113,17 @@ dset_test  = Subset(full_dataset, te_idx)
 # ------------------------------
 # DataLoaders
 # ------------------------------
+
 batch_size = 64
-eval_batch_size = 100
+eval_batch_size = 128
 
-train_loader = DataLoader(
-    dset_train,
-    batch_size=batch_size,
-    sampler=stratified_sampler(dset_train.train_labels)
-)
+# A stratified sampler is a sampling method that builds batches 
+# while preserving the class proportions of the original dataset.
+# Unsupervised learning: no class labels.
 
-val_loader = DataLoader(
-    dset_val,
-    batch_size=eval_batch_size,
-    sampler=stratified_sampler(dset_val.train_labels)
-)
-
-test_loader = DataLoader(
-    dset_test,
-    batch_size=eval_batch_size,
-    sampler=stratified_sampler(dset_test.test_labels)
-)
+train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
+test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
 
 print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(val_loader)}  test={len(test_loader)}")
 
