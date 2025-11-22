@@ -1,0 +1,126 @@
+=== Job started on Fri Nov 21 23:16:09 CET 2025 ===
+Running on host: n-62-11-15
+CUDA_VISIBLE_DEVICES=0
+Fri Nov 21 23:16:09 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.105.08             Driver Version: 580.105.08     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-PCIE-32GB           On  |   00000000:58:00.0 Off |                    0 |
+| N/A   39C    P0             32W /  250W |       0MiB /  32768MiB |      0%   E. Process |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+[INFO] Reading input .pt from: /dtu/blackhole/0d/213485/s243310/data.pt
+[INFO] Loaded data.pt: Xg_log1p=(19882, 45263), Y_tx=(19882, 162009)
+[INFO] Initializing BulkFormer...
+[INFO] BulkFormer checkpoint loaded.
+[INFO] Expression aligned to BulkFormer genes: (19882, 20010)
+[INFO] Missing genes imputed with -10: 19556
+[INFO] #high-var genes used for pooling: 2000
+[INFO] Extracting BulkFormer transcriptome-level embeddings...
+[INFO] BulkFormer embedding shape: (19882, 640)
+[INFO] Saved BulkFormer result to: /dtu/blackhole/0d/213485/s243310/bulkformer_result.pt
+=== Job finished on Sat Nov 22 01:42:37 CET 2025 ===
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@hpc.dtu.dk>
+Subject: Job 27129855: <bulkformer_extract> in cluster <dcc> Done
+
+Job <bulkformer_extract> was submitted from host <n-62-27-19> by user <s243310> in cluster <dcc> at Fri Nov 21 23:08:38 2025
+Job was executed on host(s) <4*n-62-11-15>, in queue <gpuv100>, as user <s243310> in cluster <dcc> at Fri Nov 21 23:16:08 2025
+</zhome/02/d/213485> was used as the home directory.
+</zhome/02/d/213485/DeepIsoQ/Bulkformer> was used as the working directory.
+Started at Fri Nov 21 23:16:08 2025
+Terminated at Sat Nov 22 01:42:37 2025
+Results reported at Sat Nov 22 01:42:37 2025
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -J bulkformer_extract
+#BSUB -cwd /zhome/02/d/213485/DeepIsoQ/Bulkformer
+#BSUB -o bulkformer_extract.%J.out
+#BSUB -e bulkformer_extract.%J.err
+
+# --- Queue selection (GPU V100 queue) ---
+#BSUB -q gpuv100
+
+# --- Request 1 GPU (V100), exclusive mode ---
+#BSUB -gpu "num=1:mode=exclusive_process"
+
+# --- CPU and Memory (keep same as your CPU script or increase as needed) ---
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32000]"
+
+# --- Walltime ---
+#BSUB -W 24:00
+
+echo "=== Job started on $(date) ==="
+echo "Running on host: $(hostname)"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+
+# -------------------------------
+# Load modules (same as on CPU, but CUDA required)
+# -------------------------------
+module purge
+module load cuda/11.7          # adjust to your cluster's CUDA version        # optional, but good practice
+
+# -------------------------------
+# Activate your Python 3.9.21 virtualenv/conda env
+# -------------------------------
+source ~/deep_learning/bin/activate  
+export PYTHONPATH="$BLACKHOLE/$USER/BulkFormer:$PYTHONPATH"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+
+# -------------------------------
+# Show GPU info (debug)
+# -------------------------------
+nvidia-smi
+
+# -------------------------------
+# Run your script
+# -------------------------------
+python extract_embedding_gpu.py
+
+echo "=== Job finished on $(date) ==="
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   8752.18 sec.
+    Max Memory :                                 20554 MB
+    Average Memory :                             19502.68 MB
+    Total Requested Memory :                     128000.00 MB
+    Delta Memory :                               107446.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                8
+    Run time :                                   8789 sec.
+    Turnaround time :                            9239 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file <bulkformer_extract.27129855.err> for stderr output of this job.
+
