@@ -1,0 +1,49 @@
+#!/bin/bash
+#BSUB -J bulkformer_extract
+#BSUB -cwd /zhome/02/d/213485/DeepIsoQ/Bulkformer
+#BSUB -o bulkformer_extract.%J.out
+#BSUB -e bulkformer_extract.%J.err
+
+# --- Queue selection (GPU V100 queue) ---
+#BSUB -q gpuv100
+
+# --- Request 1 GPU (V100), exclusive mode ---
+#BSUB -gpu "num=1:mode=exclusive_process"
+
+# --- CPU and Memory (keep same as your CPU script or increase as needed) ---
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32000]"
+
+# --- Walltime ---
+#BSUB -W 24:00
+
+echo "=== Job started on $(date) ==="
+echo "Running on host: $(hostname)"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+
+# -------------------------------
+# Load modules (same as on CPU, but CUDA required)
+# -------------------------------
+module purge
+module load cuda/11.7          # adjust to your cluster's CUDA version        # optional, but good practice
+
+# -------------------------------
+# Activate your Python 3.9.21 virtualenv/conda env
+# -------------------------------
+source ~/deep_learning/bin/activate  
+export PYTHONPATH="$BLACKHOLE/$USER/BulkFormer:$PYTHONPATH"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+
+# -------------------------------
+# Show GPU info (debug)
+# -------------------------------
+nvidia-smi
+
+# -------------------------------
+# Run your script
+# -------------------------------
+python extract_embedding_gpu.py
+
+echo "=== Job finished on $(date) ==="
