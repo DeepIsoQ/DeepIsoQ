@@ -17,6 +17,10 @@ import os
 from torch import nn, Tensor
 from torch.nn.functional import softplus
 from torch.distributions import Distribution
+#from torchvision.transforms import ToTensor
+from functools import reduce
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Subset, DataLoader, TensorDataset
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sns.set_style("whitegrid")
 
@@ -62,8 +66,7 @@ class ReparameterizedDiagonalGaussian(Distribution):
         )
 
 
-from torchvision.transforms import ToTensor
-from functools import reduce
+
 
 # ------------------------------
 # Data path (portable)
@@ -85,8 +88,8 @@ print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
 
-X = data["Xg_log1p"].float().cpu().numpy()
-#Y = torch.log1p(data["Y_tx"].float()).cpu().numpy()
+X = data["Xg_log1p"].float().cpu()
+#Y = torch.log1p(data["Y_tx"].float()).cpu()
 
 
 N, G = X.shape
@@ -104,11 +107,11 @@ tr_idx, va_idx = train_test_split(trval_idx, test_size=val_rel, random_state=SEE
 # ------------------------------
 # Create datasets
 # ------------------------------
-full_dataset = X
+full_dataset = TensorDataset(X)
 
-dset_train = Subset(full_dataset, tr_idx)
-dset_val   = Subset(full_dataset, va_idx)
+dset_train = Subset(full_dataset, trval_idx)
 dset_test  = Subset(full_dataset, te_idx)
+#dset_val   = Subset(full_dataset, va_idx)
 
 # ------------------------------
 # DataLoaders
@@ -122,10 +125,10 @@ eval_batch_size = 128
 # Unsupervised learning: no class labels.
 
 train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
 test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
+#val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
 
-print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(val_loader)}  test={len(test_loader)}")
+print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(test_loader)}")
 
 """
 Building the model
@@ -221,7 +224,7 @@ class VariationalAutoencoder(nn.Module):
         return {'px': px, 'pz': pz, 'qz': qz, 'z': z}
 
 
-    def sample_from_prior(self, batch_size:int=100):
+    def sample_from_prior(self, batch_size:int=128):
         """sample z~p(z) and return p(x|z)"""
 
         # degine the prior p(z)
@@ -235,10 +238,9 @@ class VariationalAutoencoder(nn.Module):
 
         return {'px': px, 'pz': pz, 'z': z}
 
-
-latent_features = 2
-vae = VariationalAutoencoder(images[0].shape, latent_features)
-print(vae)
+# initialize the VAE
+latent_features = 32
+vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 
 """
 Implementation of the ELBO and beta ELBO
@@ -270,8 +272,8 @@ class VariationalInference(nn.Module):
         # `L^\beta = E_q [ log p(x|z) ] - \beta * D_KL(q(z|x) | p(z))`
         # where `D_KL(q(z|x) | p(z)) = log q(z|x) - log p(z)`
         kl = log_qz - log_pz
-        elbo =  log_px - kl # <- your code here
-        beta_elbo = log_px - self.beta * kl # <- your code here
+        elbo =  log_px - kl 
+        beta_elbo = log_px - self.beta * kl 
 
         # loss
         loss = -beta_elbo.mean()
@@ -283,7 +285,7 @@ class VariationalInference(nn.Module):
         return loss, diagnostics, outputs
 
 vi = VariationalInference(beta=1.0)
-loss, diagnostics, outputs = vi(vae, images)
+loss, diagnostics, outputs = vi(vae, X)
 print(f"{'loss':6} | mean = {loss:10.3f}, shape: {list(loss.shape)}")
 for key, tensor in diagnostics.items():
     print(f"{key:6} | mean = {tensor.mean():10.3f}, shape: {list(tensor.shape)}")
@@ -296,10 +298,6 @@ for key, tensor in diagnostics.items():
 from collections import defaultdict
 # define the models, evaluator and optimizer
 
-# VAE
-latent_features = 2
-vae = VariationalAutoencoder(images[0].shape, latent_features)
-
 # Evaluator: Variational Inference
 beta = 1
 vi = VariationalInference(beta=beta)
@@ -310,6 +308,7 @@ optimizer = torch.optim.Adam(vae.parameters(), lr=1e-3)
 # define dictionary to store the training curves
 training_data = defaultdict(list)
 validation_data = defaultdict(list)
+
 
 epoch = 0
 
