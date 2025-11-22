@@ -174,7 +174,7 @@ def plot_latents(ax, z, y):
     ax.scatter(z[:, 0], z[:, 1], color=colors)
 
 
-def make_vae_plots(vae, x, y, outputs, training_data, validation_data, tmp_img="tmp_vae_out.png", figsize=(18, 18)):
+def make_vae_plots(vae, x, outputs, training_data, validation_data, tmp_img="tmp_vae_out.png", figsize=(18, 18)):
     fig, axes = plt.subplots(3, 3, figsize=figsize, squeeze=False)
 
     # plot the observation

@@ -311,26 +311,6 @@ validation_data = defaultdict(list)
 
 
 epoch = 0
-
-"""### Training Loop
-
-**plotting guide**:
-
-* 1st row: Reproducing the figure from the begining of the Notebook.
-    * (Left) Data.
-    * (Middle) Latent space: the large gray disk reprensents the prior (radius = $2\sigma$), each point represents a latent sample $\mathbf{z}$. The smaller ellipses represent the distributions $q_\phi(\mathbf{z} | \mathbf{x})$  (radius = $2\sigma$). When using $\geq 2$ latent features, dimensionality reduction is applied using t-SNE and only samples $\mathbf{z} \sim q_\phi(\mathbf{z} | \mathbf{x})$ are displayed.
-    * (Right) samples from $p_\theta(\mathbf{x} | \mathbf{z})$.
-
-* 2nd row: Training curves
-
-* 2rd row: Latent samples.
-    * (Left) Prior samples $\mathbf{x} \sim p_\theta(\mathbf{x} | \mathbf{z}), \mathbf{z} \sim p(\mathbf{z})$
-    * (Middle) Latent Interpolations. For each row: $\mathbf{x} \sim p_\theta(\mathbf{x} | t \cdot \mathbf{z}_1 + (1-t) \cdot \mathbf{z}_2), \mathbf{z}_1, \mathbf{z}_2 \sim p(\mathbf{z}), t=0 \dots 1$.
-    * (Right): Sampling $\mathbf{z}$ from a grid [-3:3, -3:3] $\mathbf{x} \sim p_\theta(\mathbf{x} | \mathbf{z}), \mathbf{z} \sim \operatorname{grid}(-3:3, -3:3)$ (only available for 2d latent space).
-
-**NOTE** this will take a while on CPU.
-"""
-
 num_epochs = 100
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -346,8 +326,8 @@ while epoch < num_epochs:
     vae.train()
 
     # Go through each batch in the training dataset using the loader
-    # Note that y is not necessarily known as it is here
-    for x, y in train_loader:
+    # Note that y is not necessarily known
+    for (x,) in train_loader:
         x = x.to(device)
 
         # perform a forward pass through the model and compute the ELBO
@@ -371,7 +351,7 @@ while epoch < num_epochs:
         vae.eval()
 
         # Just load a single batch from the test loader
-        x, y = next(iter(test_loader))
+        x, = next(iter(test_loader))   # unpack the tuple
         x = x.to(device)
 
         # perform a forward pass through the model and compute the ELBO
@@ -382,4 +362,4 @@ while epoch < num_epochs:
             validation_data[k] += [v.mean().item()]
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
-    make_vae_plots(vae, x, y, outputs, training_data, validation_data)
+    make_vae_plots(vae, x, outputs, training_data, validation_data)

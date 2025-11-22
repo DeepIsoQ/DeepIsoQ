@@ -6,7 +6,7 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
-#BSUB -o VAE/vae_%J.out
+#BSUB -o vae_%J.out
 #BSUB -env "all"
 
 # (optional) email
@@ -27,4 +27,5 @@ module load cuda/12.1
 source ../../deepL_venv/bin/activate          # <-- your environment path
 
 echo "=== Starting training ==="
-python3 ./variational_autoencoder.py            
+python3 variational_autoencoder.py            
+
