@@ -1,0 +1,61 @@
+#!/bin/bash
+#BSUB -J ffnn_bulkformer
+#BSUB -cwd /zhome/02/d/213485/DeepIsoQ/Bulkformer
+#BSUB -o ffnn_bulkformer.%J.out
+#BSUB -e ffnn_bulkformer.%J.err
+
+# --- Queue selection (GPU V100 queue) ---
+#BSUB -q gpua100
+
+# --- Request 1 GPU (V100), exclusive mode ---
+#BSUB -gpu "num=1"
+
+# --- CPU and Memory ---
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=8000]"
+
+# --- Walltime ---
+#BSUB -W 5:00
+
+# --- email ---
+#BSUB -u s243310@dtu.dk    
+#BSUB -B
+#BSUB -N
+
+echo "=== Job started on $(date) ==="
+echo "Running on host: $(hostname)"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+
+# -------------------------------
+# Load modules
+# -------------------------------
+module purge
+module load cuda/11.7
+
+# -------------------------------
+# Activate your Python env
+# -------------------------------
+source ~/deep_learning/bin/activate
+
+# BulkFormer code on PYTHONPATH just in case you import anything from it
+export PYTHONPATH="$BLACKHOLE/$USER/BulkFormer:$PYTHONPATH"
+
+# Avoid CUDA fragmentation
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# -------------------------------
+# Show GPU info (debug)
+# -------------------------------
+nvidia-smi
+
+# -------------------------------
+# Run FFNN search on BulkFormer embeddings
+# -------------------------------
+# If you didn't set BULKFORMER_PT in your env, do it here:
+export BULKFORMER_PT="$BLACKHOLE/$USER/bulkformer_result.pt"
+
+python ffnn_search_bulkformer.py
+
+echo "=== Job finished on $(date) ==="
+

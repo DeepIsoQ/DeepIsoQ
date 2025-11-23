@@ -1,0 +1,128 @@
+{
+  "best": {
+    "name": "deep_2048_1024_BF_t9",
+    "hidden": [
+      2048,
+      1024
+    ],
+    "act": "leakyrelu",
+    "dropout": 0.2,
+    "batchnorm": true,
+    "lr": 0.002,
+    "momentum": "-",
+    "step_size": "-",
+    "gamma": "-",
+    "batch_size": 128,
+    "epochs_trained": 120,
+    "val_mse": 0.9992438363141755,
+    "val_pearson": NaN,
+    "train_time_sec": 394.8,
+    "test_mse": 1.008354902267456,
+    "test_pearson": 0.6989720463752747
+  },
+  "top5": [
+    {
+      "name": "deep_2048_1024_BF_t9",
+      "hidden": [
+        2048,
+        1024
+      ],
+      "act": "leakyrelu",
+      "dropout": 0.2,
+      "batchnorm": true,
+      "lr": 0.002,
+      "momentum": "-",
+      "step_size": "-",
+      "gamma": "-",
+      "batch_size": 128,
+      "epochs_trained": 120,
+      "val_mse": 0.9992438363141755,
+      "val_pearson": NaN,
+      "train_time_sec": 394.8,
+      "test_mse": 1.008354902267456,
+      "test_pearson": 0.6989720463752747
+    },
+    {
+      "name": "deep_2048_1024_BF_t3",
+      "hidden": [
+        2048,
+        1024
+      ],
+      "act": "leakyrelu",
+      "dropout": 0.0,
+      "batchnorm": false,
+      "lr": 0.001,
+      "momentum": "-",
+      "step_size": "-",
+      "gamma": "-",
+      "batch_size": 192,
+      "epochs_trained": 120,
+      "val_mse": 1.0135358613567627,
+      "val_pearson": NaN,
+      "train_time_sec": 282.4
+    },
+    {
+      "name": "medium_1536_768_384_BF_t7",
+      "hidden": [
+        1536,
+        768,
+        384
+      ],
+      "act": "gelu",
+      "dropout": 0.0,
+      "batchnorm": true,
+      "lr": 0.003,
+      "momentum": "-",
+      "step_size": "-",
+      "gamma": "-",
+      "batch_size": 192,
+      "epochs_trained": 120,
+      "val_mse": 1.0221928549899857,
+      "val_pearson": NaN,
+      "train_time_sec": 128.0
+    },
+    {
+      "name": "bottleneck_2048_256_BF_t1",
+      "hidden": [
+        2048,
+        256,
+        2048
+      ],
+      "act": "relu",
+      "dropout": 0.2,
+      "batchnorm": true,
+      "lr": 0.001,
+      "momentum": "-",
+      "step_size": "-",
+      "gamma": "-",
+      "batch_size": 256,
+      "epochs_trained": 120,
+      "val_mse": 1.0230330132095358,
+      "val_pearson": NaN,
+      "train_time_sec": 411.9
+    },
+    {
+      "name": "medium_1536_768_384_BF_t8",
+      "hidden": [
+        1536,
+        768,
+        384
+      ],
+      "act": "gelu",
+      "dropout": 0.0,
+      "batchnorm": true,
+      "lr": 0.002,
+      "momentum": "-",
+      "step_size": "-",
+      "gamma": "-",
+      "batch_size": 256,
+      "epochs_trained": 120,
+      "val_mse": 1.032347224200687,
+      "val_pearson": NaN,
+      "train_time_sec": 105.6
+    }
+  ],
+  "n_trials": 12,
+  "csv": "ffnn_search_bulkformer/results/arch_search_results_bulkformer.csv",
+  "best_model_pt": "ffnn_search_bulkformer/results/best_model_bulkformer.pt"
+}
