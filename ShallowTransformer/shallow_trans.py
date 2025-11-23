@@ -57,14 +57,14 @@ N_LAYERS        = [1, 2]
 POOLINGS        = ["mean", "attn"]
 ACTIVATIONS     = ["gelu", "relu"]
 
-RESULTS_CSV      = "shallow_tf_search/results/arch_search_results.csv"
-BEST_MODEL_PT    = "shallow_tf_search/results/best_model.pt"
-SUMMARY_JSON     = "shallow_tf_search/results/arch_search_summary.json"
+RESULTS_CSV      = "ShallowTransformer/results_embedding_trans/arch_search_results.csv"
+BEST_MODEL_PT    = "ShallowTransformer/results_embedding_trans/best_model.pt"
+SUMMARY_JSON     = "ShallowTransformer/results_embedding_trans/arch_search_summary.json"
 
 os.environ.setdefault("MPLBACKEND", "Agg")
-TRIAL_FIG_DIR    = "shallow_tf_search/results/figs_trials"
-SUMMARY_FIG_BAR  = "shallow_tf_search/results/summary_val_mse_bar.png"
-SUMMARY_FIG_TOP5 = "shallow_tf_search/results/top5_val_curves.png"
+TRIAL_FIG_DIR    = "ShallowTransformer/results_embedding_trans/figs_trials"
+SUMMARY_FIG_BAR  = "ShallowTransformer/results_embedding_trans/summary_val_mse_bar.png"
+SUMMARY_FIG_TOP5 = "ShallowTransformer/results_embedding_trans/top5_val_curves.png"
 
 # ------------------------------
 # Repro & matmul knobs
@@ -93,7 +93,7 @@ if DATA_PT is None:
             "DATA_PT not set and BLACKHOLE/USER env vars missing. "
             "Either export DATA_PT or run on DTU HPC where BLACKHOLE & USER are defined."
         )
-    DATA_PT = os.path.join(bh, user, "data.pt")
+    DATA_PT = os.path.join(bh, user, "bulkformer_result.pt")
 
 print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
