@@ -6,7 +6,7 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
-#BSUB -o vae_%J.out
+#BSUB -o logs/vae_%J.out
 #BSUB -env "all"
 
 # (optional) email
