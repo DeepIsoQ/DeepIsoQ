@@ -130,6 +130,10 @@ test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
 
 print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(test_loader)}")
 
+
+print("[INFO] Extracting VAE latents for all samples...")
+full_loader = DataLoader(full_dataset, batch_size=64, shuffle=False)
+
 """
 Building the model
 When defining the model the latent layer must act as a bottleneck of information, so that we ensure that we find a strong internal representation. We initialize the VAE with 1 hidden layer in the encoder and decoder using relu units as non-linearity.
@@ -402,18 +406,25 @@ def get_vae_latents(vae: VariationalAutoencoder,
 
     return torch.cat(all_z, dim=0)
 
-Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
+""" Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
 Z_test  = get_vae_latents(vae, test_loader,  device, use_mean=True)
+print(f"[INFO] Z_train shape: {Z_train.shape}, Z_test shape: {Z_test.shape}")  # should be (N_train, latent_features), (N_test, latent_features) """
 
-print(Z_train.shape, Z_test.shape)  # should be (N_train, latent_features), (N_test, latent_features)
+Z_all   = get_vae_latents(vae, full_loader, device, use_mean=True)   # shape (N, latent_dim)
+print(f"[INFO] Z_all shape: {Z_all.shape}") 
 
 if bh is None or user is None:
     raise RuntimeError("Environment variables BLACKHOLE and USER must be set!")
 
-OUTPUT_PT = os.path.join(bh, user, "vae_latents.pt")
+OUTPUT_PT = os.path.join(bh, user, "vae_latents_all.pt")
+
+""" torch.save(
+    {"Z_train": Z_train, "Z_test": Z_test},
+    OUTPUT_PT
+) """
 
 torch.save(
-    {"Z_train": Z_train, "Z_test": Z_test},
+    {"Z": Z_all},
     OUTPUT_PT
 )
 
