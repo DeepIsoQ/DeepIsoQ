@@ -1,0 +1,9 @@
+=== Stats for Z_test ===
+mean:       -0.4553
+std:        2.7317
+min / max:  -11.9501 / 11.1821
+Any NaNs?   False
+Any Infs?   False
+Variance per dimension (first 10 dims):
+[2.1087935  0.5002924  0.8701089  1.7845991  0.61475533 1.6015315
+ 0.7033107  3.2470899  3.52506    4.4733605 ]

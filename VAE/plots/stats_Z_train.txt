@@ -1,0 +1,9 @@
+=== Stats for Z_train ===
+mean:       -0.4558
+std:        2.7394
+min / max:  -12.3589 / 13.9537
+Any NaNs?   False
+Any Infs?   False
+Variance per dimension (first 10 dims):
+[2.1209662 0.5060191 0.8830605 1.8912483 0.6131415 1.603742  0.6805711
+ 3.2767909 3.6208913 4.355265 ]
