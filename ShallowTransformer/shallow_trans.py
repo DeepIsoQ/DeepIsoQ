@@ -3,9 +3,9 @@
 Shallow Transformer Random Search (GPU + AMP)
 
 This script trains shallow transformer models to predict isoform 
-expression from gene expression. It performs a random search over:
+expression from BulkFormer embeddings. It performs a random search over:
 
-- Patch sizes (groups of genes per "token")
+- Patch sizes (embedding features per "token")
 - Transformer d_model, num_heads, num_layers
 - Pooling modes ("mean", "attn")
 - Activations ("gelu", "relu")
@@ -13,8 +13,7 @@ expression from gene expression. It performs a random search over:
 - Learning rates
 - Batch sizes
 
-What is kept identical to FFNN script:
-- Data loading (Xg_log1p, log1p(Y_tx))
+Shared with FFNN script:
 - Train/val/test split (same SEED + sklearn train_test_split)
 - Normalization (train-mean / train-std on X, log1p on Y)
 - Loss (MSE in log space)
@@ -50,7 +49,7 @@ BATCHES         = [128, 192, 256]
 LRS             = [1e-3, 2e-3, 3e-3]
 DROPOUTS        = [0.0, 0.1, 0.2]
 
-PATCH_SIZES     = [16, 32, 64]           # genes per token
+PATCH_SIZES     = [16, 32, 64]           # embedding features per token
 DMODELS         = [64, 128, 256]
 N_HEADS_OPTIONS = [2, 4, 8]
 N_LAYERS        = [1, 2]
@@ -85,7 +84,7 @@ if DEVICE == "cuda":
 DATA_PT = os.environ.get("DATA_PT")
 
 if DATA_PT is None:
-    # Fall back to $BLACKHOLE/$USER/data.pt
+    # Fall back to $BLACKHOLE/$USER/bulkformer_result.pt
     bh   = os.environ.get("BLACKHOLE")
     user = os.environ.get("USER")
     if bh is None or user is None:
@@ -98,9 +97,9 @@ if DATA_PT is None:
 print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
-# X: gene expression (already log1p in your setup)
+# X: BulkFormer embeddings
 # Y: isoform expression (we add log1p here)
-X = data["Xg_log1p"].float().cpu().numpy()
+X = data["X_bulkformer_emb"].float().cpu().numpy()
 Y = torch.log1p(data["Y_tx"].float()).cpu().numpy()
 
 N, G = X.shape
@@ -172,9 +171,9 @@ def pearson_mean_gpu(Y_true: torch.Tensor, Y_pred: torch.Tensor) -> float:
 # ------------------------------
 class ShallowPatchTransformer(nn.Module):
     """
-    Treats genes as a 1D sequence of patches:
+    Treats each BulkFormer embedding as a 1D sequence of patches:
 
-      - Input: x ∈ R^{batch, G}
+      - Input: x ∈ R^{batch, G}  (G = embedding dim)
       - Split into patches of size P: tokens ∈ R^{batch, n_patches, P}
       - Linear patch embedding to d_model
       - Add learned positional encodings
@@ -202,7 +201,7 @@ class ShallowPatchTransformer(nn.Module):
         self.pooling    = pooling.lower()
         self.activation = activation.lower()
 
-        # Number of patches (ceil in case G is not divisible by patch_size)
+        # Number of patches (ceil in case in_dim is not divisible by patch_size)
         self.n_patches = math.ceil(in_dim / patch_size)
 
         # Patch embedding: (B, n_patches, P) -> (B, n_patches, d_model)
@@ -258,7 +257,7 @@ class ShallowPatchTransformer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        x: (batch, G)
+        x: (batch, G)  — BulkFormer embeddings
         """
         B, D = x.shape
         assert D == self.in_dim, f"Expected in_dim={self.in_dim}, got {D}"
@@ -519,7 +518,7 @@ for t in range(N_TRIALS):
                 "G": G,
                 "I": I,
                 "seed": SEED,
-                "model_type": "shallow_patch_transformer",
+                "model_type": "shallow_patch_transformer_bulkformer_emb",
             },
         }, BEST_MODEL_PT)
         print(f"[BEST] Updated best by Val: {rec['name']} (val_mse={rec['val_mse']:.6f})")
@@ -579,7 +578,7 @@ try:
     plt.bar(range(len(names)), vals)
     plt.xticks(range(len(names)), names, rotation=45, ha="right")
     plt.ylabel("Validation MSE")
-    plt.title("Shallow Transformer — Validation MSE by model")
+    plt.title("Shallow Transformer (BulkFormer emb) — Validation MSE by model")
     plt.tight_layout()
     plt.savefig(SUMMARY_FIG_BAR, dpi=150)
     plt.close()
@@ -598,7 +597,7 @@ try:
         plt.plot(xs_v, c["val"], label=f"{r['name']} (val)", linewidth=2.0)
         plt.plot(range(1, len(c["train"])+1), c["train"], alpha=0.4, linewidth=1.0)
     plt.xlabel("epoch"); plt.ylabel("MSE")
-    plt.title("Shallow Transformer — Top-5 models (validation curves)")
+    plt.title("Shallow Transformer (BulkFormer emb) — Top-5 models (validation curves)")
     plt.legend(fontsize=9)
     plt.tight_layout()
     plt.savefig(SUMMARY_FIG_TOP5, dpi=150)
