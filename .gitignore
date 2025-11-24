@@ -19,3 +19,5 @@ job.lsf
 *.out
 *.err
 *.png
+*.pt
+*.json
