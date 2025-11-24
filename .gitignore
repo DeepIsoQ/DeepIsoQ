@@ -14,3 +14,7 @@ ffnn_search/results/*.csv
 ffnn_search/results/*.json
 
 job.lsf
+
+# Ignore the .err and .out
+*.out
+*.err
