@@ -13,7 +13,7 @@
 # --- CPU and Memory ---
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8000]"
+#BSUB -R "rusage[mem=16000]"
 
 # --- Walltime ---
 #BSUB -W 5:00

@@ -371,4 +371,50 @@ while epoch < num_epochs:
 
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
-    #make_vae_plots(vae, x, outputs, training_data, validation_data)
+    make_vae_plots(vae, x, outputs, training_data, validation_data)
+
+def get_vae_latents(vae: VariationalAutoencoder,
+                    loader: DataLoader,
+                    device: torch.device,
+                    use_mean: bool = True) -> torch.Tensor:
+    """
+    Compute latent representations for all samples in `loader`.
+
+    If use_mean=True, returns mu(x) (deterministic embedding).
+    If use_mean=False, returns a sample z ~ q(z|x).
+    """
+    vae.eval()
+    all_z = []
+
+    with torch.no_grad():
+        for (x,) in loader:
+            x = x.to(device)
+            x = x.view(x.size(0), -1)
+
+            qz = vae.posterior(x)   # q(z|x) = N(mu, sigma)
+
+            if use_mean:
+                z_batch = qz.mu     # posterior mean as embedding
+            else:
+                z_batch = qz.rsample()  # sample using reparam trick
+
+            all_z.append(z_batch.cpu())
+
+    return torch.cat(all_z, dim=0)
+
+Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
+Z_test  = get_vae_latents(vae, test_loader,  device, use_mean=True)
+
+print(Z_train.shape, Z_test.shape)  # should be (N_train, latent_features), (N_test, latent_features)
+
+if bh is None or user is None:
+    raise RuntimeError("Environment variables BLACKHOLE and USER must be set!")
+
+OUTPUT_PT = os.path.join(bh, user, "vae_latents.pt")
+
+torch.save(
+    {"Z_train": Z_train, "Z_test": Z_test},
+    OUTPUT_PT
+)
+
+print(f"[INFO] Saved VAE latent representations to: {OUTPUT_PT}")

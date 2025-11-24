@@ -15,4 +15,11 @@ ffnn_search/results/*.json
 
 job.lsf
 
+# Ignore the .err and .out
+*.out
+*.err
+*.png
+*.pt
+*.json
+
 venv_1
