@@ -14,3 +14,5 @@ ffnn_search/results/*.csv
 ffnn_search/results/*.json
 
 job.lsf
+
+venv_1
