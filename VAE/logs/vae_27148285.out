@@ -1,0 +1,131 @@
+[INFO] GPU detected:
+Sun Nov 23 17:11:14 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.105.08             Driver Version: 580.105.08     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-PCIE-16GB           On  |   00000000:AF:00.0 Off |                    0 |
+| N/A   64C    P0             29W /  250W |       0MiB /  16384MiB |      0%   E. Process |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Loaded module: cuda/12.1
+=== Starting training ===
+[INFO] Loading tensors from: /dtu/blackhole/0e/213806/s243275/data.pt
+[INFO] Shapes: X=torch.Size([19882, 45263])
+[INFO] Loader sizes: train=265  val=24
+loss   | mean = 360998.312, shape: []
+elbo   | mean = -360998.312, shape: [19882]
+log_px | mean = -360991.156, shape: [19882]
+kl     | mean =      7.199, shape: [19882]
+>> Using device: cuda:0
+Epoch 001 | loss=nan | elbo=nan | kl=nan
+Epoch 002 | loss=nan | elbo=nan | kl=nan
+Epoch 003 | loss=nan | elbo=nan | kl=nan
+Epoch 004 | loss=nan | elbo=nan | kl=nan
+Epoch 005 | loss=nan | elbo=nan | kl=nan
+Epoch 006 | loss=nan | elbo=nan | kl=nan
+Epoch 007 | loss=nan | elbo=nan | kl=nan
+Epoch 008 | loss=nan | elbo=nan | kl=nan
+Epoch 009 | loss=nan | elbo=nan | kl=nan
+Epoch 010 | loss=nan | elbo=nan | kl=nan
+Epoch 011 | loss=nan | elbo=nan | kl=nan
+Epoch 012 | loss=nan | elbo=nan | kl=nan
+Epoch 013 | loss=nan | elbo=nan | kl=nan
+Epoch 014 | loss=nan | elbo=nan | kl=nan
+Epoch 015 | loss=nan | elbo=nan | kl=nan
+Epoch 016 | loss=nan | elbo=nan | kl=nan
+Epoch 017 | loss=nan | elbo=nan | kl=nan
+Epoch 018 | loss=nan | elbo=nan | kl=nan
+Epoch 019 | loss=nan | elbo=nan | kl=nan
+Epoch 020 | loss=nan | elbo=nan | kl=nan
+Epoch 021 | loss=nan | elbo=nan | kl=nan
+Epoch 022 | loss=nan | elbo=nan | kl=nan
+Epoch 023 | loss=nan | elbo=nan | kl=nan
+Epoch 024 | loss=nan | elbo=nan | kl=nan
+Epoch 025 | loss=nan | elbo=nan | kl=nan
+Epoch 026 | loss=nan | elbo=nan | kl=nan
+Epoch 027 | loss=nan | elbo=nan | kl=nan
+Epoch 028 | loss=nan | elbo=nan | kl=nan
+Epoch 029 | loss=nan | elbo=nan | kl=nan
+Epoch 030 | loss=nan | elbo=nan | kl=nan
+Epoch 031 | loss=nan | elbo=nan | kl=nan
+Epoch 032 | loss=nan | elbo=nan | kl=nan
+Epoch 033 | loss=nan | elbo=nan | kl=nan
+Epoch 034 | loss=nan | elbo=nan | kl=nan
+Epoch 035 | loss=nan | elbo=nan | kl=nan
+Epoch 036 | loss=nan | elbo=nan | kl=nan
+Epoch 037 | loss=nan | elbo=nan | kl=nan
+Epoch 038 | loss=nan | elbo=nan | kl=nan
+Epoch 039 | loss=nan | elbo=nan | kl=nan
+Epoch 040 | loss=nan | elbo=nan | kl=nan
+Epoch 041 | loss=nan | elbo=nan | kl=nan
+Epoch 042 | loss=nan | elbo=nan | kl=nan
+Epoch 043 | loss=nan | elbo=nan | kl=nan
+Epoch 044 | loss=nan | elbo=nan | kl=nan
+Epoch 045 | loss=nan | elbo=nan | kl=nan
+Epoch 046 | loss=nan | elbo=nan | kl=nan
+Epoch 047 | loss=nan | elbo=nan | kl=nan
+Epoch 048 | loss=nan | elbo=nan | kl=nan
+Epoch 049 | loss=nan | elbo=nan | kl=nan
+Epoch 050 | loss=nan | elbo=nan | kl=nan
+Epoch 051 | loss=nan | elbo=nan | kl=nan
+Epoch 052 | loss=nan | elbo=nan | kl=nan
+Epoch 053 | loss=nan | elbo=nan | kl=nan
+Epoch 054 | loss=nan | elbo=nan | kl=nan
+Epoch 055 | loss=nan | elbo=nan | kl=nan
+Epoch 056 | loss=nan | elbo=nan | kl=nan
+Epoch 057 | loss=nan | elbo=nan | kl=nan
+Epoch 058 | loss=nan | elbo=nan | kl=nan
+Epoch 059 | loss=nan | elbo=nan | kl=nan
+Epoch 060 | loss=nan | elbo=nan | kl=nan
+Epoch 061 | loss=nan | elbo=nan | kl=nan
+Epoch 062 | loss=nan | elbo=nan | kl=nan
+Epoch 063 | loss=nan | elbo=nan | kl=nan
+Epoch 064 | loss=nan | elbo=nan | kl=nan
+Epoch 065 | loss=nan | elbo=nan | kl=nan
+Epoch 066 | loss=nan | elbo=nan | kl=nan
+Epoch 067 | loss=nan | elbo=nan | kl=nan
+Epoch 068 | loss=nan | elbo=nan | kl=nan
+Epoch 069 | loss=nan | elbo=nan | kl=nan
+Epoch 070 | loss=nan | elbo=nan | kl=nan
+Epoch 071 | loss=nan | elbo=nan | kl=nan
+Epoch 072 | loss=nan | elbo=nan | kl=nan
+Epoch 073 | loss=nan | elbo=nan | kl=nan
+Epoch 074 | loss=nan | elbo=nan | kl=nan
+Epoch 075 | loss=nan | elbo=nan | kl=nan
+Epoch 076 | loss=nan | elbo=nan | kl=nan
+Epoch 077 | loss=nan | elbo=nan | kl=nan
+Epoch 078 | loss=nan | elbo=nan | kl=nan
+Epoch 079 | loss=nan | elbo=nan | kl=nan
+Epoch 080 | loss=nan | elbo=nan | kl=nan
+Epoch 081 | loss=nan | elbo=nan | kl=nan
+Epoch 082 | loss=nan | elbo=nan | kl=nan
+Epoch 083 | loss=nan | elbo=nan | kl=nan
+Epoch 084 | loss=nan | elbo=nan | kl=nan
+Epoch 085 | loss=nan | elbo=nan | kl=nan
+Epoch 086 | loss=nan | elbo=nan | kl=nan
+Epoch 087 | loss=nan | elbo=nan | kl=nan
+Epoch 088 | loss=nan | elbo=nan | kl=nan
+Epoch 089 | loss=nan | elbo=nan | kl=nan
+Epoch 090 | loss=nan | elbo=nan | kl=nan
+Epoch 091 | loss=nan | elbo=nan | kl=nan
+Epoch 092 | loss=nan | elbo=nan | kl=nan
+Epoch 093 | loss=nan | elbo=nan | kl=nan
+Epoch 094 | loss=nan | elbo=nan | kl=nan
+Epoch 095 | loss=nan | elbo=nan | kl=nan
+Epoch 096 | loss=nan | elbo=nan | kl=nan
+Epoch 097 | loss=nan | elbo=nan | kl=nan
+Epoch 098 | loss=nan | elbo=nan | kl=nan
+Epoch 099 | loss=nan | elbo=nan | kl=nan
+Epoch 100 | loss=nan | elbo=nan | kl=nan

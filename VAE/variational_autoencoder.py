@@ -303,7 +303,8 @@ beta = 1
 vi = VariationalInference(beta=beta)
 
 # The Adam optimizer works really well with VAEs.
-optimizer = torch.optim.Adam(vae.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(vae.parameters(), lr=3e-5)
+max_grad_norm = 1.0
 
 # define dictionary to store the training curves
 training_data = defaultdict(list)
@@ -318,6 +319,9 @@ print(f">> Using device: {device}")
 
 # move the model to the device
 vae = vae.to(device)
+
+# Store generated samples
+generated_samples_all_epochs = []  
 
 # training..
 while epoch < num_epochs:
@@ -335,6 +339,8 @@ while epoch < num_epochs:
 
         optimizer.zero_grad()
         loss.backward()
+        # gradient clipping
+        torch.nn.utils.clip_grad_norm_(vae.parameters(), max_grad_norm)
         optimizer.step()
 
         # gather data for the current bach
@@ -346,20 +352,23 @@ while epoch < num_epochs:
     for k, v in training_epoch_data.items():
         training_data[k] += [np.mean(training_epoch_data[k])]
 
-    # Evaluate on a single batch, do not propagate gradients
+    # --- Validation ---
+    vae.eval()
     with torch.no_grad():
-        vae.eval()
-
-        # Just load a single batch from the test loader
-        x, = next(iter(test_loader))   # unpack the tuple
-        x = x.to(device)
-
-        # perform a forward pass through the model and compute the ELBO
-        loss, diagnostics, outputs = vi(vae, x)
-
-        # gather data for the validation step
+        x_val, = next(iter(test_loader))
+        x_val = x_val.to(device)
+        loss, diagnostics, outputs = vi(vae, x_val)
         for k, v in diagnostics.items():
-            validation_data[k] += [v.mean().item()]
+            validation_data[k].append(v.mean().item())
+
+    # --- Generation ---
+    with torch.no_grad():
+        gen_outputs = vae.sample_from_prior(batch_size=64)
+        x_generated = gen_outputs['px'].sample().cpu()
+        generated_samples_all_epochs.append(x_generated)
+
+    print(f"Epoch {epoch:03d} | loss={loss.item():.3f} | elbo={diagnostics['elbo'].mean().item():.3f} | kl={diagnostics['kl'].mean().item():.3f}")
+
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
-    make_vae_plots(vae, x, outputs, training_data, validation_data)
+    #make_vae_plots(vae, x, outputs, training_data, validation_data)
