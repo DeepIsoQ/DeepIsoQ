@@ -1,0 +1,58 @@
+#!/bin/bash
+#BSUB -J shallow_transformer
+#BSUB -cwd /zhome/93/c/214448/DeepIsoQ/ShallowTransformer
+#BSUB -o ffnn_shallow_trans.%J.out
+#BSUB -e ffnn_shallow_trans.%J.err
+
+# --- Queue selection (GPU V100 queue) ---
+#BSUB -q gpuv100
+
+# --- Request 1 GPU (V100), exclusive mode ---
+#BSUB -gpu "num=1"
+
+# --- CPU and Memory ---
+#BSUB -n 2
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=64000]"
+
+# --- Walltime ---
+#BSUB -W 24:00
+
+# --- email ---
+#BSUB -u s243692@dtu.dk    
+#BSUB -B
+#BSUB -N
+
+echo "=== Job started on $(date) ==="
+echo "Running on host: $(hostname)"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+
+# -------------------------------
+# Load modules
+# -------------------------------
+module purge
+module load cuda/11.7
+
+# -------------------------------
+# Activate your Python env
+# -------------------------------
+source /zhome/93/c/214448/venv_dl/bin/activate
+
+# Avoid CUDA fragmentation
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# -------------------------------
+# Show GPU info (debug)
+# -------------------------------
+nvidia-smi
+
+# -------------------------------
+# Run FFNN search on BulkFormer embeddings
+# -------------------------------
+# If you didn't set BULKFORMER_PT in your env, do it here:
+export BULKFORMER_PT="$BLACKHOLE/$USER/data.pt"
+
+python shallow_trans_raw.py
+
+echo "=== Job finished on $(date) ==="
+

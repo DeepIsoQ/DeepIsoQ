@@ -23,3 +23,5 @@ job.lsf
 *.json
 
 venv_1
+
+bulkformer/*

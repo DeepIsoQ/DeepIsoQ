@@ -1,0 +1,11 @@
+name,patch_size,d_model,n_heads,num_layers,pooling,activation,dropout,lr,momentum,step_size,gamma,batch_size,epochs_trained,val_mse,val_pearson,train_time_sec
+tf_p256_d96_h2_L1_attn_gelu_t0,256,96,2,1,attn,gelu,0.2,0.002,-,-,-,8,120,1.0312826771325327,nan,1789.1
+tf_p256_d96_h2_L2_mean_relu_t1,256,96,2,2,mean,relu,0.1,0.003,-,-,-,8,85,1.0689433365111138,nan,1316.1
+tf_p64_d64_h4_L2_attn_gelu_t2,64,64,4,2,attn,gelu,0.0,0.002,-,-,-,8,120,1.0036554846873909,nan,1869.8
+tf_p64_d64_h4_L1_mean_relu_t3,64,64,4,1,mean,relu,0.1,0.001,-,-,-,8,120,1.037729116122354,nan,1468.9
+tf_p256_d128_h4_L2_attn_relu_t4,256,128,4,2,attn,relu,0.0,0.001,-,-,-,16,120,0.9659915520487078,nan,1218.6
+tf_p128_d128_h2_L1_attn_gelu_t5,128,128,2,1,attn,gelu,0.1,0.002,-,-,-,8,90,1.0408170450225278,nan,1429.3
+tf_p256_d96_h4_L2_attn_gelu_t6,256,96,4,2,attn,gelu,0.1,0.001,-,-,-,8,120,0.9897215553789461,nan,2330.9
+tf_p64_d128_h4_L2_attn_gelu_t7,64,128,4,2,attn,gelu,0.0,0.002,-,-,-,16,120,0.9533685159851072,nan,1550.1
+tf_p64_d128_h4_L2_attn_relu_t8,64,128,4,2,attn,relu,0.1,0.002,-,-,-,16,120,0.9853859263260892,nan,1684.7
+tf_p256_d64_h4_L2_attn_gelu_t9,256,64,4,2,attn,gelu,0.0,0.001,-,-,-,16,120,1.0174346291455414,nan,1019.0
