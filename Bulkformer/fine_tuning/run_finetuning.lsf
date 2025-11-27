@@ -1,0 +1,54 @@
+#!/bin/bash
+#BSUB -J finetune_bulkformer
+#BSUB -q gpuv100
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -n 4
+#BSUB -R "rusage[mem=64GB]"
+#BSUB -W 24:00
+#BSUB -o fine_tuning/logs/finetune.%J.out
+#BSUB -e fine_tuning/logs/finetune.%J.err
+
+# email
+#BSUB -u s243310@dtu.dk
+#BSUB -B
+#BSUB -N
+
+# ------------------------------------------
+# Move to your project directory
+# ------------------------------------------
+cd /zhome/02/d/213485/DeepIsoQ/Bulkformer/fine_tuning
+
+mkdir -p logs
+
+# ------------------------------------------
+# Modules / environment
+# ------------------------------------------
+module purge
+module load cuda/11.7
+
+source ~/deep_learning/bin/activate
+
+# IMPORTANT: make BulkFormer importable
+export PYTHONPATH="$BLACKHOLE/$USER/BulkFormer:$PYTHONPATH"
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+
+# ------------------------------------------
+# Check GPU visibility
+# ------------------------------------------
+echo "CUDA available?"
+python - << 'EOF'
+import torch
+print("torch.cuda.is_available():", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+EOF
+
+# ------------------------------------------
+# Run fine-tuning
+# ------------------------------------------
+echo "=== PHASE 2: fine-tuning BulkFormer + FFNN head ==="
+python ~/DeepIsoQ/Bulkformer/fine_tuning/finetune_phase2.py
+
+echo "=== DONE ==="
