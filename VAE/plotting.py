@@ -64,16 +64,17 @@ def make_vae_plots(
     outputs,
     training_data,
     validation_data,
-    tmp_img="tmp_vae_out.png",
+    save_path=None,
     figsize=(12, 4),
 ):
     """
-    Plot only:
+    Plot:
       - ELBO
       - KL
-      - log p(x|z)  (NLL term)
-    """
+      - log p(x|z)
 
+    If save_path is given, saves the figure there.
+    """
     fig, axes = plt.subplots(1, 3, figsize=figsize, squeeze=False)
     ax_elbo, ax_kl, ax_nll = axes[0]
 
@@ -101,9 +102,9 @@ def make_vae_plots(
     ax_nll.legend()
 
     plt.tight_layout()
-    plt.savefig(tmp_img)
-    plt.close(fig)
-    display(Image(filename=tmp_img))
-    clear_output(wait=True)
 
-    os.remove(tmp_img)
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+
+    plt.close(fig)
+
