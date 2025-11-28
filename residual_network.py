@@ -28,14 +28,14 @@ DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
 
 # Fixed training hyperparameters (simple test)
-MAX_EPOCHS      = 200
-BATCH_SIZE      = 192
-LR              = 1e-3
-GRAD_CLIP       = 1.0
+MAX_EPOCHS      = 60    # number of training epochs
+BATCH_SIZE      = 192   # number of samples per batch
+LR              = 1e-3  # how big each parameter update is (standard 1e-3 for AdamW)
+GRAD_CLIP       = 1.0   # max norm for gradient clipping, avoid exploding gradients
 
-DROPOUT         = 0.1
-HIDDEN_DIM      = 512     # embedding dimension
-NUM_BLOCKS      = 4       # number of residual blocks
+DROPOUT         = 0.1   # randomly sets 10% of activations to zero in each residual block
+HIDDEN_DIM      = 512   # embedding dimension
+NUM_BLOCKS      = 4     # number of residual blocks
 
 # ------------------------------
 # Repro & matmul knobs
@@ -67,32 +67,44 @@ if DATA_PT is None:
 print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
-# X: gene expression (log1p), Y: isoform expression (log1p applied here)
-X = data["Xg_log1p"].float().cpu().numpy()
+# --- Y: isoform expression ---
 Y = torch.log1p(data["Y_tx"].float()).cpu().numpy()
+
+# --- X: now comes from VAE latents, not Xg_log1p ---
+LATENT_PT = os.environ.get("LATENT_PT")
+if LATENT_PT is None:
+    # default: same dir as DATA_PT, file name vae_latents.pt
+    data_dir = os.path.dirname(DATA_PT)
+    LATENT_PT = os.path.join(data_dir, "vae_latents_all.pt")
+
+print(f"[INFO] Loading VAE latents from: {LATENT_PT}")
+latents = torch.load(LATENT_PT, map_location="cpu")
+
+if "Z" not in latents:
+    raise KeyError(
+        "vae_latents.pt must contain key 'Z' with shape (N, latent_dim). "
+        f"Got keys: {list(latents.keys())}"
+    )
+
+Z = latents["Z"].float().cpu().numpy()   # shape (N, latent_dim)
+X = Z                                    # treat latents as inputs
 
 N, G = X.shape
 _, I = Y.shape
-print(f"[INFO] Shapes: X={X.shape}, Y={Y.shape}")
+print(f"[INFO] Shapes: X(latents)={X.shape}, Y={Y.shape}")
 
 # ------------------------------
 # Split: train / val / test
 # ------------------------------
-from sklearn.model_selection import train_test_split
-
 all_idx = np.arange(N)
-trval_idx, te_idx = train_test_split(
-    all_idx, test_size=TEST_FRAC, random_state=SEED, shuffle=True
-)
+trval_idx, te_idx = train_test_split(all_idx, test_size=TEST_FRAC, random_state=SEED, shuffle=True)
 val_rel = VAL_FRAC / (1.0 - TEST_FRAC)
-tr_idx, va_idx = train_test_split(
-    trval_idx, test_size=val_rel, random_state=SEED, shuffle=True
-)
-
+tr_idx, va_idx = train_test_split(trval_idx, test_size=val_rel, random_state=SEED, shuffle=True)
 print(f"[INFO] Split sizes: train={len(tr_idx)}  val={len(va_idx)}  test={len(te_idx)}")
 
 # ------------------------------
 # Normalize once (train stats) + device tensors
+# (now normalization is applied to latent features instead of genes)
 # ------------------------------
 X_mean = X[tr_idx].mean(axis=0)
 X_std  = X[tr_idx].std(axis=0) + 1e-8
@@ -106,9 +118,6 @@ va_idx_t = torch.from_numpy(va_idx).to(DEVICE)
 te_idx_t = torch.from_numpy(te_idx).to(DEVICE)
 
 def batch_iter(idxs_t, batch_size, shuffle=True):
-    """
-    Simple batch iterator on pre-loaded Xt, Yt tensors.
-    """
     if shuffle:
         idxs_t = idxs_t[torch.randperm(idxs_t.numel(), device=idxs_t.device)]
     for i in range(0, idxs_t.numel(), batch_size):
@@ -272,7 +281,7 @@ model = ResidualMLP(
 ).to(DEVICE)
 
 opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-scaler = torch.cuda.amp.GradScaler(enabled=AMP)
+scaler = torch.cuda.amp.GradScaler('cuda', enabled=AMP)
 
 # ------------------------------
 # Simple training loop
