@@ -46,25 +46,25 @@ EVAL_EVERY      = 5
 GRAD_CLIP       = 1.0
 
 # HPO search ranges
-BATCHES         = [16, 32, 64]                # larger batch uses more GPU memory
+BATCHES         = [8, 16]                # larger batch uses more GPU memory
 LRS             = [1e-3, 2e-3, 3e-3]
 DROPOUTS        = [0.0, 0.1, 0.2]
 
-PATCH_SIZES = [16, 32, 64]         # genes per token
-DMODELS = [128, 192, 256, 384]  # transformer embedding dims
-N_HEADS_OPTIONS = [2, 4, 8]               # must divide d_model
+PATCH_SIZES     = [64, 128, 256]           # genes per token
+DMODELS         = [64, 96, 128]  # transformer embedding dims
+N_HEADS_OPTIONS = [2, 4]               # must divide d_model
 N_LAYERS        = [1, 2]                  # transformer layers
 POOLINGS        = ["mean", "attn"]
 ACTIVATIONS     = ["gelu", "relu"]
 
-RESULTS_CSV      = "ShallowTransformer_a100/results/arch_search_results.csv"
-BEST_MODEL_PT    = "ShallowTransformer_a100/results/best_model.pt"
-SUMMARY_JSON     = "ShallowTransformer_a100/results/arch_search_summary.json"
+RESULTS_CSV      = "results_v1/arch_search_results.csv"
+BEST_MODEL_PT    = "results_v1/best_model.pt"
+SUMMARY_JSON     = "results_v1/arch_search_summary.json"
 
 os.environ.setdefault("MPLBACKEND", "Agg")
-TRIAL_FIG_DIR    = "ShallowTransformer_a100/results/figs_trials"
-SUMMARY_FIG_BAR  = "ShallowTransformer_a100/results/summary_val_mse_bar.png"
-SUMMARY_FIG_TOP5 = "ShallowTransformer_a100/results/top5_val_curves.png"
+TRIAL_FIG_DIR    = "results_v1/figs_trials"
+SUMMARY_FIG_BAR  = "results_v1/summary_val_mse_bar.png"
+SUMMARY_FIG_TOP5 = "results_v1/top5_val_curves.png"
 
 # ------------------------------
 # Repro & matmul knobs
