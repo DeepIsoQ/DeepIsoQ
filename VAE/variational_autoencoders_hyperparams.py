@@ -6,7 +6,6 @@ Variational Autoencoder for Isoform Expression Prediction
 from typing import *
 from plotting import make_vae_plots
 import matplotlib
-matplotlib.use("Agg") 
 import matplotlib.pyplot as plt
 from IPython.display import Image, display, clear_output
 import numpy as np
@@ -15,6 +14,7 @@ import pandas as pd
 import math
 import torch
 import os 
+import argparse
 from torch import nn, Tensor
 from torch.nn.functional import softplus
 from torch.distributions import Distribution
@@ -33,6 +33,46 @@ TEST_FRAC       = 0.15
 VAL_FRAC        = 0.15
 DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="VAE for gene expression → latent embeddings"
+    )
+
+    # Core hyperparameters
+    parser.add_argument("--latent-dim", type=int, default=64,
+                        help="Latent dimensionality z (default: 64)")
+    parser.add_argument("--beta", type=float, default=1.0,
+                        help="KL weight beta in beta-VAE (default: 1.0)")
+    parser.add_argument("--lr", type=float, default=3e-5,
+                        help="Learning rate for Adam (default: 3e-5)")
+    parser.add_argument("--batch-size", type=int, default=128,
+                        help="Training batch size (default: 128)")
+    parser.add_argument("--eval-batch-size", type=int, default=0,
+                        help="Eval batch size (default: 2x batch-size if 0)")
+    parser.add_argument("--epochs", type=int, default=1000,
+                        help="Number of training epochs (default: 1000)")
+    parser.add_argument("--max-grad-norm", type=float, default=1.0,
+                        help="Max gradient norm for clipping (default: 1.0)")
+
+    # Optional: name suffix for outputs
+    parser.add_argument("--tag", type=str, default="",
+                        help="Optional tag to add to output filename")
+
+    return parser.parse_args()
+
+args = parse_args()
+print("[INFO] Parsed args:", args)
+
+# We observed that the first gradient steps can be quite large, destabilizing training.
+# To mitigate this, we reduce the effect of large gradients by averaging over dimensions
+# instead of summing when reducing log probabilities.
+def reduce(x: Tensor) -> Tensor:
+    # Old (too big):
+    # return x.view(x.size(0), -1).sum(dim=1)
+
+    # New (more stable):
+    return x.view(x.size(0), -1).mean(dim=1)
 
 
 class ReparameterizedDiagonalGaussian(Distribution):
@@ -68,7 +108,6 @@ class ReparameterizedDiagonalGaussian(Distribution):
 
 
 
-
 # ------------------------------
 # Data path (portable)
 # ------------------------------
@@ -97,8 +136,6 @@ N, G = X.shape
 #_, I = Y.shape
 print(f"[INFO] Shapes: X={X.shape}")
 
-FIG_DIR = "vae_figs"
-os.makedirs(FIG_DIR, exist_ok=True)
 
 # Define the train, test and validation sets
 all_idx = np.arange(N)
@@ -120,22 +157,19 @@ dset_test  = Subset(full_dataset, te_idx)
 # DataLoaders
 # ------------------------------
 
-batch_size = 64
-eval_batch_size = 128
+batch_size = args.batch_size
+eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else 2 * batch_size
 
-# A stratified sampler is a sampling method that builds batches 
-# while preserving the class proportions of the original dataset.
-# Unsupervised learning: no class labels.
+print(f"[INFO] batch_size={batch_size}, eval_batch_size={eval_batch_size}")
 
 train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
-#val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
+test_loader  = DataLoader(dset_test,  batch_size=eval_batch_size, shuffle=False)
 
 print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(test_loader)}")
 
-
 print("[INFO] Extracting VAE latents for all samples...")
-full_loader = DataLoader(full_dataset, batch_size=64, shuffle=False)
+full_loader = DataLoader(full_dataset, batch_size=eval_batch_size, shuffle=False)
+
 
 """
 Building the model
@@ -246,8 +280,10 @@ class VariationalAutoencoder(nn.Module):
         return {'px': px, 'pz': pz, 'z': z}
 
 # initialize the VAE
-latent_features = 1000
+latent_features = args.latent_dim
+print(f"[INFO] Using latent_dim={latent_features}")
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
+
 
 """
 Implementation of the ELBO and beta ELBO
@@ -306,20 +342,21 @@ from collections import defaultdict
 # define the models, evaluator and optimizer
 
 # Evaluator: Variational Inference
-beta = 1
+beta = args.beta
 vi = VariationalInference(beta=beta)
 
 # The Adam optimizer works really well with VAEs.
-optimizer = torch.optim.Adam(vae.parameters(), lr=3e-5)
-max_grad_norm = 1.0
+optimizer = torch.optim.Adam(vae.parameters(), lr=args.lr)
+max_grad_norm = args.max_grad_norm
 
 # define dictionary to store the training curves
 training_data = defaultdict(list)
 validation_data = defaultdict(list)
 
-
 epoch = 0
-num_epochs = 500
+num_epochs = args.epochs
+
+print(f"[INFO] beta={beta}, lr={args.lr}, epochs={num_epochs}, max_grad_norm={max_grad_norm}")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f">> Using device: {device}")
@@ -378,12 +415,7 @@ while epoch < num_epochs:
 
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
-    if epoch == num_epochs:
-        fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}.png")
-        make_vae_plots(vae, x, outputs, training_data, validation_data,
-                    save_path=fig_path)
-        print(f"[INFO] Saved VAE training plot to {fig_path}")
-
+    make_vae_plots(vae, x, outputs, training_data, validation_data)
 
 def get_vae_latents(vae: VariationalAutoencoder,
                     loader: DataLoader,
@@ -424,16 +456,20 @@ print(f"[INFO] Z_all shape: {Z_all.shape}")
 if bh is None or user is None:
     raise RuntimeError("Environment variables BLACKHOLE and USER must be set!")
 
-OUTPUT_PT = os.path.join(bh, user, "vae_latents_all.pt")
+# build a nice suffix for the file name
+lr_str = f"{args.lr:.0e}".replace("-", "m")  # e.g. 3e-04 -> 3e-04m if you want, or just use raw str(args.lr)
+suffix_parts = [
+    f"z{args.latent_dim}",
+    f"b{args.beta}",
+    f"lr{lr_str}",
+    f"bs{args.batch_size}",
+]
+if args.tag:
+    suffix_parts.append(args.tag)
 
-""" torch.save(
-    {"Z_train": Z_train, "Z_test": Z_test},
-    OUTPUT_PT
-) """
+suffix = "_".join(suffix_parts)
+filename = f"vae_latents_all_{suffix}.pt"
+OUTPUT_PT = os.path.join(bh, user, filename)
 
-torch.save(
-    {"Z": Z_all},
-    OUTPUT_PT
-)
-
+torch.save({"Z": Z_all}, OUTPUT_PT)
 print(f"[INFO] Saved VAE latent representations to: {OUTPUT_PT}")
