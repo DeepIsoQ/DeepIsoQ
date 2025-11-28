@@ -243,7 +243,7 @@ class VariationalAutoencoder(nn.Module):
         return {'px': px, 'pz': pz, 'z': z}
 
 # initialize the VAE
-latent_features = 32
+latent_features = 1000
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 
 """
