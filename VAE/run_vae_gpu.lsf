@@ -6,11 +6,11 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
-#BSUB -o logs/vae_figsolv2_%J.out
+#BSUB -o logs/vae_isof_%J.out
 #BSUB -env "all"
 
 # (optional) email
-#BSUB -u s243275@dtu.dk    # <-- your email
+#BSUB -u s243311@dtu.dk    # <-- your email
 #BSUB -B
 #BSUB -N
 
@@ -24,8 +24,8 @@ echo "[INFO] GPU detected:"
 nvidia-smi
 
 module load cuda/12.1
-source ../../deepL_venv/bin/activate          # <-- your environment path
+source ../venv_1/bin/activate          # <-- your environment path
 
 echo "=== Starting training ==="
-python3 variational_autoencoder.py            
+python3 variational_autoencoder_isoform.py            
 
