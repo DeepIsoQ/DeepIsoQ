@@ -25,3 +25,4 @@ job.lsf
 venv_1
 
 bulkformer/*
+Bulkformer/fine_tuning/__pycache__/isoform_model.cpython-39.pyc
