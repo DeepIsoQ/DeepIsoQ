@@ -34,6 +34,30 @@ VAL_FRAC        = 0.15
 DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
 
+# ------------------------------
+# Helper function for unique file paths
+# ------------------------------
+
+def get_unique_path(base_path):
+    """
+    If base_path exists, append _2, _3, _4, ... before the extension.
+    Example:
+        vae_training_epoch010.png
+        vae_training_epoch010_2.png
+        vae_training_epoch010_3.png
+    """
+    if not os.path.exists(base_path):
+        return base_path
+    
+    root, ext = os.path.splitext(base_path)
+    counter = 2
+    new_path = f"{root}_{counter}{ext}"
+
+    while os.path.exists(new_path):
+        counter += 1
+        new_path = f"{root}_{counter}{ext}"
+    
+    return new_path
 
 class ReparameterizedDiagonalGaussian(Distribution):
     """
@@ -65,8 +89,6 @@ class ReparameterizedDiagonalGaussian(Distribution):
             + 2 * self.sigma.log()
             + math.log(2 * math.pi)
         )
-
-
 
 
 # ------------------------------
@@ -149,35 +171,40 @@ class VariationalAutoencoder(nn.Module):
     * a Gaussian posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
     """
 
-    def __init__(self, input_shape:torch.Size, latent_features:int) -> None:
-        super(VariationalAutoencoder, self).__init__()
+    def __init__(self, input_shape: torch.Size, latent_features: int,
+                 input_dropout_p: float = 0.1, hidden_dropout_p: float = 0.0):
+        super().__init__()
+
 
         self.input_shape = input_shape
         self.latent_features = latent_features
         self.observation_features = np.prod(input_shape)
+
+        #  New: dropout layer on the input
+        self.input_dropout = nn.Dropout(p=input_dropout_p)
 
 
         # Inference Network
         # Encode the observation `x` into the parameters of the posterior distribution
         # `q_\phi(z|x) = N(z | \mu(x), \sigma(x)), \mu(x),\log\sigma(x) = h_\phi(x)`
         self.encoder = nn.Sequential(
-            nn.Linear(in_features=self.observation_features, out_features=256),
+            nn.Linear(in_features=self.observation_features, out_features=640),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=128),
+            nn.Linear(in_features=640, out_features=160),
             nn.ReLU(),
             # A Gaussian is fully characterised by its mean \mu and variance \sigma**2
-            nn.Linear(in_features=128, out_features=2*latent_features) # <- note the 2*latent_features
+            nn.Linear(in_features=160, out_features=2*latent_features) # <- note the 2*latent_features
         )
 
         # Generative Model
         # Decode the latent sample `z` into the parameters of the observation model
         # `p_\theta(x | z) = \prod_i B(x_i | g_\theta(x))`
         self.decoder = nn.Sequential(
-            nn.Linear(in_features=latent_features, out_features=128),
+            nn.Linear(in_features=latent_features, out_features=160),
             nn.ReLU(),
-            nn.Linear(in_features=128, out_features=256),
+            nn.Linear(in_features=160, out_features=640),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=2*self.observation_features)
+            nn.Linear(in_features=640, out_features=2*self.observation_features)
         )
 
         # define the parameters of the prior, chosen as p(z) = N(0, I)
@@ -216,6 +243,9 @@ class VariationalAutoencoder(nn.Module):
         # flatten the input
         x = x.view(x.size(0), -1)
 
+        # apply input dropout
+        x = self.input_dropout(x)
+
         # define the posterior q(z|x) / encode x into q(z|x)
         qz = self.posterior(x)
 
@@ -246,8 +276,9 @@ class VariationalAutoencoder(nn.Module):
         return {'px': px, 'pz': pz, 'z': z}
 
 # initialize the VAE
-latent_features = 1000
+latent_features = 80
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
+print(f"[INFO] latent features: {latent_features}")
 
 """
 Implementation of the ELBO and beta ELBO
@@ -317,9 +348,10 @@ max_grad_norm = 1.0
 training_data = defaultdict(list)
 validation_data = defaultdict(list)
 
-
 epoch = 0
-num_epochs = 500
+num_epochs = 100
+
+print(f"[INFO]: beta={beta}, learning rate={optimizer.param_groups[0]['lr']}, num_epochs={num_epochs}")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f">> Using device: {device}")
@@ -380,6 +412,7 @@ while epoch < num_epochs:
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
     if epoch == num_epochs:
         fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}.png")
+        fig_path = get_unique_path(fig_path)  
         make_vae_plots(vae, x, outputs, training_data, validation_data,
                     save_path=fig_path)
         print(f"[INFO] Saved VAE training plot to {fig_path}")
