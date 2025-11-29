@@ -1,14 +1,13 @@
 #!/bin/bash
 #BSUB -J shallow_transformer
-#BSUB -cwd /zhome/93/c/214448/DeepIsoQ/ShallowTransformer/ShallowTransformer_a100
+#BSUB -cwd /zhome/93/c/214448/DeepIsoQ/ShallowTransformer
 #BSUB -o ffnn_shallow_trans.%J.out
 #BSUB -e ffnn_shallow_trans.%J.err
 
-# --- Queue selection (GPU A100 queue) ---
-#BSUB -q gpua100
-#BSUB -R "select[gpu80gb]"
+# --- Queue selection (GPU V100 queue) ---
+#BSUB -q gpuv100
 
-# --- Request 1 GPU (A100), exclusive mode ---
+# --- Request 1 GPU (V100), exclusive mode ---
 #BSUB -gpu "num=1"
 
 # --- CPU and Memory ---
@@ -47,13 +46,11 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # -------------------------------
 nvidia-smi
 
-# -------------------------------
-# Run FFNN search on BulkFormer embeddings
-# -------------------------------
+
 # If you didn't set BULKFORMER_PT in your env, do it here:
 export BULKFORMER_PT="$BLACKHOLE/$USER/data.pt"
 
-python shallow_trans_a100.py
+python shallow_trans_raw.py
 
 echo "=== Job finished on $(date) ==="
 

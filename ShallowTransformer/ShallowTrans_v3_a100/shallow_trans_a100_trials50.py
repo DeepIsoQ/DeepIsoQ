@@ -39,32 +39,32 @@ VAL_FRAC        = 0.15
 DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
 
-N_TRIALS        = 10
+N_TRIALS        = 50
 MAX_EPOCHS      = 120
 PATIENCE        = 10
 EVAL_EVERY      = 5
 GRAD_CLIP       = 1.0
 
 # HPO search ranges
-BATCHES         = [8, 16]                # larger batch uses more GPU memory
+BATCHES         = [16, 32, 64]                # larger batch uses more GPU memory
 LRS             = [1e-3, 2e-3, 3e-3]
 DROPOUTS        = [0.0, 0.1, 0.2]
 
-PATCH_SIZES     = [64, 128, 256]           # genes per token
-DMODELS         = [64, 96, 128]  # transformer embedding dims
-N_HEADS_OPTIONS = [2, 4]               # must divide d_model
+PATCH_SIZES = [16, 32, 64]         # genes per token
+DMODELS = [128, 192, 256, 384]  # transformer embedding dims
+N_HEADS_OPTIONS = [2, 4, 8]               # must divide d_model
 N_LAYERS        = [1, 2]                  # transformer layers
 POOLINGS        = ["mean", "attn"]
 ACTIVATIONS     = ["gelu", "relu"]
 
-RESULTS_CSV      = "ShallowTransformer/results_raw/arch_search_results.csv"
-BEST_MODEL_PT    = "ShallowTransformer/results_raw/best_model.pt"
-SUMMARY_JSON     = "ShallowTransformer/results_raw/arch_search_summary.json"
+RESULTS_CSV      = "results50/arch_search_results.csv"
+BEST_MODEL_PT    = "results50/best_model.pt"
+SUMMARY_JSON     = "results50/arch_search_summary.json"
 
 os.environ.setdefault("MPLBACKEND", "Agg")
-TRIAL_FIG_DIR    = "ShallowTransformer/results_raw/figs_trials"
-SUMMARY_FIG_BAR  = "ShallowTransformer/results_raw/summary_val_mse_bar.png"
-SUMMARY_FIG_TOP5 = "ShallowTransformer/results_raw/top5_val_curves.png"
+TRIAL_FIG_DIR    = "results50/figs_trials"  
+SUMMARY_FIG_BAR  = "results50/summary_val_mse_bar.png"
+SUMMARY_FIG_TOP5 = "results50/top5_val_curves.png"
 
 # ------------------------------
 # Repro & matmul knobs

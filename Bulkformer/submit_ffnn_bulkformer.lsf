@@ -1,13 +1,13 @@
 #!/bin/bash
 #BSUB -J ffnn_bulkformer
 #BSUB -cwd /zhome/02/d/213485/DeepIsoQ/Bulkformer
-#BSUB -o ffnn_bulkformer.%J.out
-#BSUB -e ffnn_bulkformer.%J.err
+#BSUB -o ffnn_bulkformer_2.%J.out
+#BSUB -e ffnn_bulkformer_2.%J.err
 
 # --- Queue selection (GPU V100 queue) ---
 #BSUB -q gpua100
 
-# --- Request 1 GPU (V100), exclusive mode ---
+# --- Request 1 GPU (A100), exclusive mode ---
 #BSUB -gpu "num=1"
 
 # --- CPU and Memory ---
@@ -16,7 +16,7 @@
 #BSUB -R "rusage[mem=8000]"
 
 # --- Walltime ---
-#BSUB -W 5:00
+#BSUB -W 24:00
 
 # --- email ---
 #BSUB -u s243310@dtu.dk    
@@ -55,7 +55,7 @@ nvidia-smi
 # If you didn't set BULKFORMER_PT in your env, do it here:
 export BULKFORMER_PT="$BLACKHOLE/$USER/bulkformer_result.pt"
 
-python ffnn_search_bulkformer.py
+python ~/DeepIsoQ/Bulkformer/ffnn_search_bulkformer/results/ffnn_search_bulkformer.py
 
 echo "=== Job finished on $(date) ==="
 
