@@ -236,6 +236,15 @@ if __name__ == "__main__":
     print(f"[INFO] aligned expression shape: {X_aligned.shape}")
     print(f"[INFO] #missing genes (imputed with -10): {len(missing_genes)}")
 
+    # --- DEBUG: alignment checks ---
+    assert X_aligned.shape[1] == len(bulk_gene_list), (
+        f"Columns of X_aligned ({X_aligned.shape[1]}) "
+        f"!= len(bulk_gene_list) ({len(bulk_gene_list)})"
+    )
+    print("[DEBUG] first 5 genes in bulk_gene_list:", bulk_gene_list[:5])
+    print("[DEBUG] first 5 genes in X_aligned_df.columns:",
+          X_aligned_df.columns[:5].tolist())
+
     # --------------------------
     # split train / val / test
     # --------------------------
@@ -295,9 +304,31 @@ if __name__ == "__main__":
     # high-var genes
     # --------------------------
     high_var_gene_idx = torch.load(HIGH_VAR_GENE_IDX_PT, map_location="cpu")
+
+    # Convert tensor → numpy
     if isinstance(high_var_gene_idx, torch.Tensor):
         high_var_gene_idx = high_var_gene_idx.numpy()
+
+    # Convert list → numpy
+    high_var_gene_idx = np.array(high_var_gene_idx, dtype=int)
+
     print(f"[INFO] #high-var genes used: {len(high_var_gene_idx)}")
+
+    # --- DEBUG: HVG checks ---
+    hvg_min = int(high_var_gene_idx.min())
+    hvg_max = int(high_var_gene_idx.max())
+    print(f"[DEBUG] HVG idx min={hvg_min}, max={hvg_max}")
+
+    assert hvg_min >= 0, "Negative indices found in high_var_gene_idx"
+    assert hvg_max < len(bulk_gene_list), (
+        f"HVG idx max={hvg_max} out of range (len(bulk_gene_list)={len(bulk_gene_list)})"
+    )
+
+    # Look at the first 10 HVGs
+    sample_hvg = high_var_gene_idx[:10]
+    sample_hvg_genes = [bulk_gene_list[i] for i in sample_hvg]
+    print("[DEBUG] first 10 HVG idx:", sample_hvg.tolist())
+    print("[DEBUG] first 10 HVG genes:", sample_hvg_genes)
 
     # --------------------------
     # Phase-1 FFNN head
@@ -348,7 +379,7 @@ if __name__ == "__main__":
         if isinstance(m, nn.BatchNorm1d):
             m.eval()
 
-      encoder_params = [p for p in model.bulkformer.parameters() if p.requires_grad]
+    encoder_params = [p for p in model.bulkformer.parameters() if p.requires_grad]
     head_params = list(model.head.parameters())
 
     opt = torch.optim.AdamW(
@@ -364,11 +395,11 @@ if __name__ == "__main__":
     )
 
     # --------------------------
-    # sanity check: EPOCH 0 (no training), check if the results are the same as in the ffnn 
+    # sanity check: EPOCH 0 (no training)
     # --------------------------
     print("[INFO] sanity check BEFORE fine-tuning (epoch 0)")
 
-    # aseguramos BN en eval para el head
+    # keep BN of head frozen here too
     for m in model.head.modules():
         if isinstance(m, nn.BatchNorm1d):
             m.eval()
