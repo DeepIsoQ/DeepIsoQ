@@ -34,6 +34,30 @@ VAL_FRAC        = 0.15
 DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
 
+# ------------------------------
+# Helper function for unique file paths
+# ------------------------------
+
+def get_unique_path(base_path):
+    """
+    If base_path exists, append _2, _3, _4, ... before the extension.
+    Example:
+        vae_training_epoch010.png
+        vae_training_epoch010_2.png
+        vae_training_epoch010_3.png
+    """
+    if not os.path.exists(base_path):
+        return base_path
+    
+    root, ext = os.path.splitext(base_path)
+    counter = 2
+    new_path = f"{root}_{counter}{ext}"
+
+    while os.path.exists(new_path):
+        counter += 1
+        new_path = f"{root}_{counter}{ext}"
+    
+    return new_path
 
 class ReparameterizedDiagonalGaussian(Distribution):
     """
@@ -159,25 +183,25 @@ class VariationalAutoencoder(nn.Module):
         # Encode the observation `x` into the parameters of the posterior distribution
         # `q_\phi(z|x) = N(z | \mu(x), \sigma(x)), \mu(x),\log\sigma(x) = h_\phi(x)`
         self.encoder = nn.Sequential(
-            nn.Linear(in_features=self.observation_features, out_features=256),
+            nn.Linear(in_features=self.observation_features, out_features=640),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(in_features=256, out_features=128),
+            nn.Linear(in_features=640, out_features=160),
             nn.ReLU(),
             nn.Dropout(0.2),
             # A Gaussian is fully characterised by its mean \mu and variance \sigma**2
-            nn.Linear(in_features=128, out_features=2*latent_features) # <- note the 2*latent_features
+            nn.Linear(in_features=160, out_features=2*latent_features) # <- note the 2*latent_features
         )
 
         # Generative Model
         # Decode the latent sample `z` into the parameters of the observation model
         # `p_\theta(x | z) = \prod_i B(x_i | g_\theta(x))`
         self.decoder = nn.Sequential(
-            nn.Linear(in_features=latent_features, out_features=128),
+            nn.Linear(in_features=latent_features, out_features=160),
             nn.ReLU(),
-            nn.Linear(in_features=128, out_features=256),
+            nn.Linear(in_features=160, out_features=640),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=2*self.observation_features)
+            nn.Linear(in_features=640, out_features=2*self.observation_features)
         )
 
         # define the parameters of the prior, chosen as p(z) = N(0, I)
@@ -250,20 +274,20 @@ class IsoformRegressor(nn.Module):
     def __init__(self, latent_dim: int, n_isoforms: int):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(latent_dim, 512),
+            nn.Linear(latent_dim, 160),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(512, 512),
+            nn.Linear(160, 640),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(512, n_isoforms)
+            nn.Linear(640, n_isoforms)
         )
 
     def forward(self, z: Tensor) -> Tensor:
         return self.net(z)
 
 # initialize the VAE
-latent_features = 512
+latent_features = 80
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 iso_head = IsoformRegressor(latent_features, I)
 
@@ -426,6 +450,7 @@ while epoch < num_epochs:
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
     if epoch == num_epochs:
         fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}.png")
+        fig_path = get_unique_path(fig_path)  
         make_vae_plots(vae, x, outputs, training_data, validation_data,
                     save_path=fig_path)
         print(f"[INFO] Saved VAE training plot to {fig_path}")
