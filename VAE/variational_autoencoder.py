@@ -285,8 +285,9 @@ Implementation of the ELBO and beta ELBO
 """
 
 def reduce(x:Tensor) -> Tensor:
-    """for each datapoint: sum over all dimensions"""
-    return x.view(x.size(0), -1).sum(dim=1)
+    """for each datapoint: get the mean over all dimensions. 
+    Change from previously where we got the sum over all dimensions."""
+    return x.view(x.size(0), -1).mean(dim=1)
 
 class VariationalInference(nn.Module):
     def __init__(self, beta:float=1.):
@@ -457,7 +458,7 @@ print(f"[INFO] Z_all shape: {Z_all.shape}")
 if bh is None or user is None:
     raise RuntimeError("Environment variables BLACKHOLE and USER must be set!")
 
-OUTPUT_PT = os.path.join(bh, user, "vae_latents_all.pt")
+OUTPUT_PT = os.path.join(bh, user, f"vae_latents_all_ld{latent_features}.pt")
 
 """ torch.save(
     {"Z_train": Z_train, "Z_test": Z_test},
