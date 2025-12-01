@@ -64,16 +64,6 @@ def parse_args():
 args = parse_args()
 print("[INFO] Parsed args:", args)
 
-# We observed that the first gradient steps can be quite large, destabilizing training.
-# To mitigate this, we reduce the effect of large gradients by averaging over dimensions
-# instead of summing when reducing log probabilities.
-def reduce(x: Tensor) -> Tensor:
-    # Old (too big):
-    # return x.view(x.size(0), -1).sum(dim=1)
-
-    # New (more stable):
-    return x.view(x.size(0), -1).mean(dim=1)
-
 
 class ReparameterizedDiagonalGaussian(Distribution):
     """
@@ -289,9 +279,12 @@ vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 Implementation of the ELBO and beta ELBO
 """
 
+# We observed that the first gradient steps can be quite large, destabilizing training.
+# To mitigate this, we reduce the effect of large gradients by averaging over dimensions
+# instead of summing when reducing log probabilities.
 def reduce(x:Tensor) -> Tensor:
     """for each datapoint: sum over all dimensions"""
-    return x.view(x.size(0), -1).sum(dim=1)
+    return x.view(x.size(0), -1).mean(dim=1)
 
 class VariationalInference(nn.Module):
     def __init__(self, beta:float=1.):
@@ -451,8 +444,10 @@ Z_test  = get_vae_latents(vae, test_loader,  device, use_mean=True)
 print(f"[INFO] Z_train shape: {Z_train.shape}, Z_test shape: {Z_test.shape}")  # should be (N_train, latent_features), (N_test, latent_features) """
 
 Z_all   = get_vae_latents(vae, full_loader, device, use_mean=True)   # shape (N, latent_dim)
-print(f"[INFO] Z_all shape: {Z_all.shape}") 
+print(f"[INFO] Z_all shape: {Z_all.shape}")
 
+bh = os.environ.get("BLACKHOLE")
+user = os.environ.get("USER")
 if bh is None or user is None:
     raise RuntimeError("Environment variables BLACKHOLE and USER must be set!")
 
