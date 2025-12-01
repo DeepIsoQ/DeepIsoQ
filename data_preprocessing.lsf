@@ -1,0 +1,28 @@
+#!/bin/bash 
+#BSUB -J data_preprocessing
+#BSUB -q gpuv100
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -W 00:30     #30 minutes                 
+#BSUB -n 4
+#BSUB -R "rusage[mem=32000] span[hosts=1]"
+#BSUB -cwd .
+#BSUB -o logs/data_preprocessing_%J.out # '%J' gives the jobID. 
+#BSUB -env "all"
+
+# (optional) email
+#BSUB -u s215065@dtu.dk    # <-- your email
+#BSUB -B
+#BSUB -N
+
+echo "Starting job on host: $(hostname)"
+echo "Using Python from: $(which python)"
+echo "Job started at: $(date)"
+
+# Activate environment
+source ~/.bashrc
+source .venv/bin/activate #<--- Update venv name or use module load python/...
+
+# Run the script
+python data_preprocessing.py
+
+echo "Job finished at: $(date)"

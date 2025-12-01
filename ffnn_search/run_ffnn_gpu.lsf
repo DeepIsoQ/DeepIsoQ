@@ -2,7 +2,7 @@
 #BSUB -J ffnn_gpu
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -W 24:00                 
+#BSUB -W 24:00
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
@@ -10,7 +10,7 @@
 #BSUB -env "all"
 
 # (optional) email
-#BSUB -u s243692@dtu.dk     # <-- your email
+#BSUB -u s215065@dtu.dk     # <-- your email
 #BSUB -B
 #BSUB -N
 
@@ -24,7 +24,7 @@ echo "[INFO] GPU detected:"
 nvidia-smi
 
 module load cuda/12.1
-source ../venv_dl/bin/activate          # <-- your environment path
+source ../.venv/bin/activate          # <-- your environment path
 
 echo "=== Starting training ==="
 python3 ffnn_search/ffnn_arch_search_gpu.py            
