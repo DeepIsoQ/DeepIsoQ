@@ -349,7 +349,7 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
     val_mse    = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
     train_time = time.time() - t0
 
-    # --- NEW: compute validation Pearson ---
+    #compute validation Pearson 
     model.eval()
     with torch.no_grad():
         preds_val = []
