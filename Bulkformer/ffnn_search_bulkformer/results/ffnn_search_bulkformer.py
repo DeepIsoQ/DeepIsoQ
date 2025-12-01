@@ -370,11 +370,24 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
                 print(f"[{hp['name']}] Early stopping (no improvement).", flush=True)
                 break
 
+    # ---- load best and compute final validation metrics (MSE + Pearson) ----
     if best_state is not None:
         model.load_state_dict(best_state)
 
+    # Final val MSE
     val_mse    = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
     train_time = time.time() - t0
+
+    # Final val Pearson (using all val samples)
+    model.eval()
+    with torch.no_grad():
+        preds_val = []
+        for xb, _ in batch_iter(va_idx_t, batch_size=hp["batch_size"], shuffle=False):
+            with torch.amp.autocast("cuda", enabled=AMP):
+                preds_val.append(model(xb))
+        Y_val_t    = Yt[va_idx_t].to(DEVICE)
+        Y_val_pred = torch.cat(preds_val, dim=0)
+        val_r      = pearson_mean_gpu(Y_val_t, Y_val_pred)
 
     # Per-trial plot
     try:
@@ -409,7 +422,7 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
         "batch_size": hp["batch_size"],
         "epochs_trained": len(train_curve),
         "val_mse": float(val_mse),
-        "val_pearson": float("nan"),
+        "val_pearson": float(val_r),   # ← now filled with real value
         "train_time_sec": round(train_time, 1),
     }
     curves = {"train": train_curve, "val": val_curve}

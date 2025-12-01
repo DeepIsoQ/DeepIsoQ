@@ -1,13 +1,13 @@
 #!/bin/bash
-#BSUB -J ffnn_gpu_2
+#BSUB -J ffnn_gpu_2_rerun
 #BSUB -q gpua100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -W 24:00
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
-#BSUB -o ffnn_search/logs/ffnn_v2_2_%J.out
-#BSUB -e ffnn_search/logs/ffnn_v2_2_%J.err
+#BSUB -o ffnn_search/logs/ffnn_v2_3_%J.out
+#BSUB -e ffnn_search/logs/ffnn_v2_3_%J.err
 #BSUB -env "all"
 
 # Email notifications (optional)
