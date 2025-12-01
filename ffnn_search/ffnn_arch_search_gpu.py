@@ -216,11 +216,13 @@ def train_once(hp, trial_seed):
     """
     set_seed(trial_seed)
 
-    model = FFNN(G, I,
-                 hidden=hp["hidden"],
-                 act=hp["act"],
-                 dropout=hp["dropout"],
-                 batchnorm=hp["batchnorm"]).to(DEVICE)
+    model = FFNN(
+        G, I,
+        hidden=hp["hidden"],
+        act=hp["act"],
+        dropout=hp["dropout"],
+        batchnorm=hp["batchnorm"]
+    ).to(DEVICE)
     model.apply(lambda m: init_linear(m, hp["act"]))
 
     opt = torch.optim.AdamW(model.parameters(), lr=hp["lr"], weight_decay=1e-4)
@@ -245,7 +247,8 @@ def train_once(hp, trial_seed):
             if GRAD_CLIP is not None:
                 scaler.unscale_(opt)
                 nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-            scaler.step(opt); scaler.update()
+            scaler.step(opt)
+            scaler.update()
             total += float(loss.item()) * yb.size(0)
             seen  += yb.size(0)
 
@@ -264,15 +267,33 @@ def train_once(hp, trial_seed):
             else:
                 noimp += 1
 
-            print(f"[{hp['name']}] ep {epoch:03d} | act={hp['act']} | train {epoch_train:.5f} | val {val_mse:.5f} | lr {opt.param_groups[0]['lr']:.4g}")
+            print(
+                f"[{hp['name']}] ep {epoch:03d} | act={hp['act']} | "
+                f"train {epoch_train:.5f} | val {val_mse:.5f} | "
+                f"lr {opt.param_groups[0]['lr']:.4g}"
+            )
             if noimp >= PATIENCE:
                 print(f"[{hp['name']}] Early stopping.")
                 break
 
-    if best_state: model.load_state_dict(best_state)
+    # ---- load best state and compute final val MSE + Pearson ----
+    if best_state is not None:
+        model.load_state_dict(best_state)
 
+    # Final validation MSE
     val_mse = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
     train_time = time.time() - t0
+
+    # Final validation Pearson (for this trial)
+    model.eval()
+    with torch.no_grad():
+        preds_val = []
+        for xb, _ in batch_iter(va_idx_t, batch_size=hp["batch_size"], shuffle=False):
+            with torch.cuda.amp.autocast(enabled=AMP):
+                preds_val.append(model(xb))
+        Y_val_t    = Yt[va_idx_t]           # (N_val, I) on DEVICE
+        Y_val_pred = torch.cat(preds_val, dim=0)
+        val_r      = pearson_mean_gpu(Y_val_t, Y_val_pred)
 
     # Per-trial plot
     pathlib.Path(TRIAL_FIG_DIR).mkdir(parents=True, exist_ok=True)
@@ -281,10 +302,15 @@ def train_once(hp, trial_seed):
         fig_path = os.path.join(TRIAL_FIG_DIR, f"curves_{hp['name']}.png")
         plt.figure(figsize=(7.5, 4.5))
         plt.plot(train_curve, label="train MSE")
-        xs_v = [e for e in range(1, len(train_curve)+1) if e == 1 or e % EVAL_EVERY == 0][:len(val_curve)]
+        xs_v = [
+            e for e in range(1, len(train_curve)+1)
+            if e == 1 or e % EVAL_EVERY == 0
+        ][:len(val_curve)]
         plt.plot(xs_v, val_curve, "o-", label="val MSE")
-        plt.xlabel("epoch"); plt.ylabel("MSE"); plt.title(f"{hp['name']} — act={hp['act']}")
-        plt.legend(); plt.tight_layout(); plt.savefig(fig_path, dpi=150); plt.close()
+        plt.xlabel("epoch"); plt.ylabel("MSE")
+        plt.title(f"{hp['name']} — act={hp['act']}")
+        plt.legend(); plt.tight_layout()
+        plt.savefig(fig_path, dpi=150); plt.close()
     except Exception as e:
         print(f"[WARN] Plot failed for {hp['name']}: {e}")
 
@@ -299,11 +325,12 @@ def train_once(hp, trial_seed):
         "batch_size": hp["batch_size"],
         "epochs_trained": len(train_curve),
         "val_mse": float(val_mse),
-        "val_pearson": float("nan"),
+        "val_pearson": float(val_r),
         "train_time_sec": round(train_time, 1),
     }
     curves = {"train": train_curve, "val": val_curve}
     return rec, model, curves
+
 
 # ------------------------------
 # Search space
