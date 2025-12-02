@@ -55,6 +55,7 @@ transcript_id_to_index = gene_ad.uns["transcript_id_to_index"]
 transcript_mapping    = gene_ad.uns["transcript_mapping"]
 
 torch.save({
+    "X_gene": X_gene,
     "Xg_log1p": Xg_log1p,
     "Y_tx": Y_tx,
     "gene_ids": gene_ids,
