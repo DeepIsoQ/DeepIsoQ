@@ -20,6 +20,10 @@ if ! command -v nvidia-smi &> /dev/null; then
     exit 1
 fi
 
+#Create output dirs, if they don't exist already: 
+mkdir -p PCA/logs
+mkdir -p PCA/results
+
 echo "[INFO] GPU detected:"
 nvidia-smi
 
@@ -30,4 +34,4 @@ echo "=== Starting training ==="
 python3 PCA/pca_script.py
 
 #Submit it using (cd to DeepIsoQ):
-# bsub < PCA/pca_ffnn.lsf
+# bsub < PCA/pca_ffnn_job.sh
