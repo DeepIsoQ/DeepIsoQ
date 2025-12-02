@@ -7,7 +7,7 @@
 # --- Queue selection (GPU V100 queue) ---
 #BSUB -q gpua100
 
-# --- Request 1 GPU (A100), exclusive mode ---
+# --- Request 1 GPU (A40), exclusive mode ---
 #BSUB -gpu "num=1"
 
 # --- CPU and Memory ---
