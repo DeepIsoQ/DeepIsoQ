@@ -102,7 +102,7 @@ LATENT_PT = os.environ.get("LATENT_PT")
 if LATENT_PT is None:
     # default: same dir as DATA_PT, file name vae_latents.pt
     data_dir = os.path.dirname(DATA_PT)
-    LATENT_PT = os.path.join(data_dir, "vae_latents_all.pt")
+    LATENT_PT = os.path.join(data_dir, "vae_latents_all_ld80.pt")
 
 print(f"[INFO] Loading VAE latents from: {LATENT_PT}")
 latents = torch.load(LATENT_PT, map_location="cpu")
