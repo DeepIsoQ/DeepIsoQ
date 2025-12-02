@@ -118,19 +118,51 @@ X_mean = X[tr_idx].mean(axis=0)
 X_std  = X[tr_idx].std(axis=0) + 1e-8
 Xz = (X - X_mean) / X_std
 
-Xt = torch.from_numpy(Xz).to(DEVICE).float()
-Yt = torch.from_numpy(Y ).to(DEVICE).float()
+# Xt = torch.from_numpy(Xz).to(DEVICE).float()
+# Yt = torch.from_numpy(Y ).to(DEVICE).float()
+# 
+# tr_idx_t = torch.from_numpy(tr_idx).to(DEVICE)
+# va_idx_t = torch.from_numpy(va_idx).to(DEVICE)
+# te_idx_t = torch.from_numpy(te_idx).to(DEVICE)
 
+# [NEW] Keep data on CPU, move indices to GPU
+Xt = torch.from_numpy(Xz).float() # Stay on CPU
+Yt = torch.from_numpy(Y ).float() # Stay on CPU
+
+# Indices can stay on GPU (they are tiny integers)
 tr_idx_t = torch.from_numpy(tr_idx).to(DEVICE)
 va_idx_t = torch.from_numpy(va_idx).to(DEVICE)
 te_idx_t = torch.from_numpy(te_idx).to(DEVICE)
 
+
+
+
+# def batch_iter(idxs_t, batch_size, shuffle=True):
+#     if shuffle:
+#         idxs_t = idxs_t[torch.randperm(idxs_t.numel(), device=idxs_t.device)]
+#     for i in range(0, idxs_t.numel(), batch_size):
+#         j = idxs_t[i:i+batch_size]
+#         yield Xt.index_select(0, j), Yt.index_select(0, j)
+
+
 def batch_iter(idxs_t, batch_size, shuffle=True):
     if shuffle:
         idxs_t = idxs_t[torch.randperm(idxs_t.numel(), device=idxs_t.device)]
+    
+    #We need CPU indices to slice the CPU tensor Xt/Yt
+    idxs_cpu = idxs_t.cpu() 
+    
     for i in range(0, idxs_t.numel(), batch_size):
-        j = idxs_t[i:i+batch_size]
-        yield Xt.index_select(0, j), Yt.index_select(0, j)
+        j = idxs_cpu[i:i+batch_size] # Slice using CPU indices
+        
+        #1. Slice on CPU
+        x_batch = Xt.index_select(0, j)
+        y_batch = Yt.index_select(0, j)
+        
+        #2. Move to GPU asynchronously (much more memory efficient)
+        yield x_batch.to(DEVICE, non_blocking=True), y_batch.to(DEVICE, non_blocking=True)
+
+
 
 # ------------------------------
 # Activations + init
@@ -192,19 +224,49 @@ def evaluate_on(model, idxs_t, batch_size):
             seen  += yb.size(0)
     return total / max(1, seen)
 
-def pearson_mean_gpu(Y_true, Y_pred):
+# def pearson_mean_gpu(Y_true, Y_pred):
+#     """
+#     Fast GPU Pearson correlation (mean over outputs).
+#     Y_true, Y_pred: (N, I) tensors on GPU
+#     """
+#     yt = Y_true - Y_true.mean(dim=0, keepdim=True)
+#     yp = Y_pred - Y_pred.mean(dim=0, keepdim=True)
+
+#     num = (yt * yp).sum(dim=0)
+#     den = torch.sqrt((yt * yt).sum(dim=0)) * torch.sqrt((yp * yp).sum(dim=0)) + 1e-8
+
+#     r = num / den
+#     return r.nanmean().item()
+
+def pearson_mean_gpu(Y_true, Y_pred, chunk_size=5000):
     """
-    Fast GPU Pearson correlation (mean over outputs).
+    Computes Pearson correlation in chunks to save memory.
     Y_true, Y_pred: (N, I) tensors on GPU
     """
-    yt = Y_true - Y_true.mean(dim=0, keepdim=True)
-    yp = Y_pred - Y_pred.mean(dim=0, keepdim=True)
+    N, I = Y_true.shape
+    corrs = []
+    
+    # Iterate over columns in chunks
+    for i in range(0, I, chunk_size):
+        end = min(i + chunk_size, I)
+        
+        # Slice current chunk
+        yt_c = Y_true[:, i:end]
+        yp_c = Y_pred[:, i:end]
+        
+        # Center them
+        yt_c = yt_c - yt_c.mean(dim=0, keepdim=True)
+        yp_c = yp_c - yp_c.mean(dim=0, keepdim=True)
 
-    num = (yt * yp).sum(dim=0)
-    den = torch.sqrt((yt * yt).sum(dim=0)) * torch.sqrt((yp * yp).sum(dim=0)) + 1e-8
+        # Compute Pearson for chunk
+        num = (yt_c * yp_c).sum(dim=0)
+        den = torch.sqrt((yt_c**2).sum(dim=0)) * torch.sqrt((yp_c**2).sum(dim=0)) + 1e-8
+        corrs.append(num / den)
 
-    r = num / den
-    return r.nanmean().item()
+    # Combine all chunks
+    all_corrs = torch.cat(corrs)
+    return all_corrs.nanmean().item()
+
 
 # ------------------------------
 # One training run (per trial)
@@ -291,7 +353,10 @@ def train_once(hp, trial_seed):
         for xb, _ in batch_iter(va_idx_t, batch_size=hp["batch_size"], shuffle=False):
             with torch.cuda.amp.autocast(enabled=AMP):
                 preds_val.append(model(xb))
-        Y_val_t    = Yt[va_idx_t]           # (N_val, I) on DEVICE
+        
+        #Move indices to CPU to slice Yt, then move result to GPU
+        Y_val_t = Yt[va_idx_t.cpu()].to(DEVICE)
+        
         Y_val_pred = torch.cat(preds_val, dim=0)
         val_r      = pearson_mean_gpu(Y_val_t, Y_val_pred)
 
@@ -329,7 +394,14 @@ def train_once(hp, trial_seed):
         "train_time_sec": round(train_time, 1),
     }
     curves = {"train": train_curve, "val": val_curve}
+
+    #Garbage collection to clear up GPU memory:
+    del opt
+    del scaler
+    torch.cuda.empty_cache() 
+    
     return rec, model, curves
+
 
 
 # ------------------------------
@@ -413,7 +485,10 @@ with torch.no_grad():
         with torch.cuda.amp.autocast(enabled=AMP):
             preds.append(best_model(xb))
 
-Y_test_t = Yt[te_idx_t]           # tensor on GPU
+
+#Tensor on GPU - Move indices to CPU to slice Yt, then move result to GPU: 
+Y_test_t = Yt[te_idx_t.cpu()].to(DEVICE)
+
 Y_pred_t = torch.cat(preds, dim=0)
 
 test_mse = float(((Y_test_t - Y_pred_t)**2).mean().item())
