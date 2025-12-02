@@ -90,6 +90,49 @@ class ReparameterizedDiagonalGaussian(Distribution):
             + math.log(2 * math.pi)
         )
 
+class NegativeBinomial(Distribution):
+    """
+    Negative Binomial with mean `mu` and inverse-dispersion `theta` (>0).
+
+    We implement:
+      - log_prob(x)  : exact NB log-likelihood (used for training)
+      - sample()     : robust Poisson(mu) approximation (used only for generation)
+    """
+    arg_constraints = {}
+    support = torch.distributions.constraints.nonnegative_integer
+
+    def __init__(self, mu: Tensor, theta: Tensor, eps: float = 1e-8):
+        super().__init__()
+        assert mu.shape == theta.shape
+        self.mu = mu
+        self.theta = theta
+        self.eps = eps
+
+    def log_prob(self, x: Tensor) -> Tensor:
+        mu = self.mu
+        theta = self.theta
+        eps = self.eps
+
+        return (
+            torch.lgamma(x + theta)
+            - torch.lgamma(theta)
+            - torch.lgamma(x + 1.0)
+            + theta * (torch.log(theta + eps) - torch.log(theta + mu + eps))
+            + x * (torch.log(mu + eps) - torch.log(theta + mu + eps))
+        )
+
+    def sample(self) -> Tensor:
+        """
+        Robust sampling: approximate NB by Poisson(mean = mu).
+        """
+        with torch.no_grad():
+            # *** IMPROVED CLAMPING: Use a small minimum, like 1e-6, for robustness ***
+            # Ensure mu is strictly positive before passing to Poisson.
+            # Poisson requires lambda (rate) >= 0. 
+            mu_safe = torch.clamp(self.mu, min=1e-6) # Use 1e-6 instead of self.eps
+            return torch.poisson(mu_safe)
+
+
 
 # ------------------------------
 # Data path (portable)
@@ -111,7 +154,7 @@ print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
 
-X = data["Xg_log1p"].float().cpu()
+X = data["X_gene"].float().cpu()
 #Y = torch.log1p(data["Y_tx"].float()).cpu()
 
 
@@ -207,6 +250,22 @@ class VariationalAutoencoder(nn.Module):
             nn.Linear(in_features=640, out_features=2*self.observation_features)
         )
 
+        # *** Initialize the final layer for stable mu/theta ***
+        # The last layer is responsible for raw_mu and raw_theta.
+        # Initialize bias to a small positive value (e.g., log(1e-2)) so mu starts > 0.
+        # Initialize weights to be small.
+        final_layer = self.decoder[-1]
+        
+        # Small weight initialization
+        nn.init.normal_(final_layer.weight, mean=0., std=1e-4)
+        
+        # Bias initialization: set raw_mu bias to ensure exp(bias) starts at a reasonable value (e.g., 1e-2)
+        # The layer output is [raw_mu, raw_theta]. raw_mu occupies the first half of the bias vector.
+        half_out_features = final_layer.out_features // 2
+        nn.init.constant_(final_layer.bias[:half_out_features], -5.0) # bias for raw_mu: exp(-5.0) ~ 0.0067
+        nn.init.constant_(final_layer.bias[half_out_features:], 0.0)  # bias for raw_theta
+        # ----------------------------------------------------------------------
+
         # define the parameters of the prior, chosen as p(z) = N(0, I)
         self.register_buffer('prior_params', torch.zeros(torch.Size([1, 2*latent_features])))
 
@@ -228,14 +287,30 @@ class VariationalAutoencoder(nn.Module):
         # return the distribution `p(z)`
         return ReparameterizedDiagonalGaussian(mu, log_sigma)
 
-    def observation_model(self, z:Tensor) -> Distribution:
-        """return the distribution `p(x|z)`"""
+    def observation_model(self, z: Tensor) -> Distribution:
+        """
+        return the distribution p(x|z) as Negative Binomial with mean mu(z)
+        and inverse-dispersion theta(z) > 0.
+        """
         obs_params = self.decoder(z)
-        mu, log_sigma = obs_params.chunk(2, dim=-1)
-        # reshape the output to the input shape
-        mu = mu.view(-1, *self.input_shape) 
-        log_sigma = log_sigma.view(-1, *self.input_shape)
-        return ReparameterizedDiagonalGaussian(mu, log_sigma)
+        # split into two parts: one for mu, one for theta
+        raw_mu, raw_theta = obs_params.chunk(2, dim=-1)
+
+        # --- FIX APPLIED HERE ---
+        # mu is the mean of the Negative Binomial (must be > 0).
+        # torch.exp ensures strict positivity, preventing the "lambda >= 0" error.
+        mu = torch.exp(raw_mu) 
+        
+        # theta is the inverse-dispersion parameter (must be > 0).
+        # softplus is fine here, but we keep the epsilon for safety.
+        theta = softplus(raw_theta) + 1e-4
+
+        # reshape back to input shape
+        mu = mu.view(-1, *self.input_shape)
+        theta = theta.view(-1, *self.input_shape)
+
+        return NegativeBinomial(mu, theta)
+
 
     def forward(self, x) -> Dict[str, Any]:
         """compute the posterior q(z|x) (encoder), sample z~q(z|x) and return the distribution p(x|z) (decoder)"""
@@ -338,7 +413,10 @@ from collections import defaultdict
 # define the models, evaluator and optimizer
 
 # Evaluator: Variational Inference
-beta = 1
+epoch = 0
+num_epochs = 100
+
+beta =  1.0
 vi = VariationalInference(beta=beta)
 
 # The Adam optimizer works really well with VAEs.
@@ -348,9 +426,6 @@ max_grad_norm = 1.0
 # define dictionary to store the training curves
 training_data = defaultdict(list)
 validation_data = defaultdict(list)
-
-epoch = 0
-num_epochs = 100
 
 print(f"[INFO]: beta={beta}, learning rate={optimizer.param_groups[0]['lr']}, num_epochs={num_epochs}")
 
