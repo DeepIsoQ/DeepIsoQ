@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Variational Autoencoder for Isoform Expression Prediction
 """
@@ -60,6 +61,13 @@ def get_unique_path(base_path):
     
     return new_path
 
+FIG_DIR = "vae_figs"
+os.makedirs(FIG_DIR, exist_ok=True)
+
+# ------------------------------
+# Implementation of the Gaussian distribution with reparameterization trick
+# -----------------------------
+
 class ReparameterizedDiagonalGaussian(Distribution):
     """
     A distribution `N(y | mu, sigma I)` compatible with the reparameterization trick given `epsilon ~ N(0, 1)`.
@@ -91,6 +99,10 @@ class ReparameterizedDiagonalGaussian(Distribution):
             + 2 * self.sigma.log()
             + math.log(2 * math.pi)
         )
+    
+# ------------------------------
+# Implementation of the Negative Binomial distribution
+# ------------------------------
 
 class NegativeBinomial(Distribution):
     """
@@ -174,15 +186,15 @@ data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 X = data["X_gene"].float().cpu()
 #Y = torch.log1p(data["Y_tx"].float()).cpu()
 
-
 N, G = X.shape
 #_, I = Y.shape
 print(f"[INFO] Shapes: X={X.shape}")
 
-FIG_DIR = "vae_figs"
-os.makedirs(FIG_DIR, exist_ok=True)
 
-# Define the train, test and validation sets
+# ------------------------------
+# Create train/val/test splits
+# ------------------------------
+
 all_idx = np.arange(N)
 trval_idx, te_idx = train_test_split(all_idx, test_size=TEST_FRAC, random_state=SEED, shuffle=True)
 val_rel = VAL_FRAC / (1.0 - TEST_FRAC)
@@ -194,7 +206,7 @@ tr_idx, va_idx = train_test_split(trval_idx, test_size=val_rel, random_state=SEE
 # ------------------------------
 full_dataset = TensorDataset(X)
 
-dset_train = Subset(full_dataset, trval_idx)
+dset_train = Subset(full_dataset, tr_idx)
 dset_test  = Subset(full_dataset, te_idx)
 dset_val   = Subset(full_dataset, va_idx)
 
@@ -213,22 +225,28 @@ train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
 val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
 
-print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(test_loader)}")
+# We will return the number of batches in each loader for verification (total samples / batch size)
+print(f"[INFO] Loader sizes: train={len(train_loader)}, val={len(val_loader)}, test={len(test_loader)}")
 
 
 print("[INFO] Extracting VAE latents for all samples...")
 full_loader = DataLoader(full_dataset, batch_size=64, shuffle=False)
 
+# ------------------------------
+# Building the model
+# ------------------------------
+
 """
-Building the model
-When defining the model the latent layer must act as a bottleneck of information, so that we ensure that we find a strong internal representation. We initialize the VAE with 1 hidden layer in the encoder and decoder using relu units as non-linearity.
+When defining the model the latent layer must act as a bottleneck of information, so that we 
+ensure that we find a strong internal representation. We initialize the VAE with 1 hidden layer 
+in the encoder and decoder using relu units as non-linearity.
 """
 
 class VariationalAutoencoder(nn.Module):
     """A Variational Autoencoder with
-    * a Gaussian likelihood observation model `p_\theta(x | z) = N(x | \mu_\theta(z), \sigma^2_\theta(z) I)`
+    * a Gaussian likelihood observation model `p_\theta(x | z) = NB(x | \mu_\theta(z), \theta_\theta(z) I)
     * a Gaussian prior `p(z) = N(z | 0, I)`
-    * a NB posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
+    * a Gaussian posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
     """
 
     def __init__(self, input_shape: torch.Size, latent_features: int,
@@ -240,31 +258,33 @@ class VariationalAutoencoder(nn.Module):
         self.latent_features = latent_features
         self.observation_features = np.prod(input_shape)
 
-        #  New: dropout layer on the input
+        # Dropout layer on the input
         self.input_dropout = nn.Dropout(p=input_dropout_p)
-
 
         # Inference Network
         # Encode the observation `x` into the parameters of the posterior distribution
         # `q_\phi(z|x) = N(z | \mu(x), \sigma(x)), \mu(x),\log\sigma(x) = h_\phi(x)`
         self.encoder = nn.Sequential(
-            nn.Linear(in_features=self.observation_features, out_features=640),
+            nn.Linear(in_features=self.observation_features, out_features=H1),
             nn.ReLU(),
-            nn.Linear(in_features=640, out_features=160),
+            nn.Linear(in_features=H1, out_features=H2),
             nn.ReLU(),
-            # A Gaussian is fully characterised by its mean \mu and variance \sigma**2
-            nn.Linear(in_features=160, out_features=2*latent_features) # <- note the 2*latent_features
+            nn.Linear(in_features=H2, out_features=H3),
+            nn.ReLU(),
+            nn.Linear(in_features=H3, out_features=2*latent_features)
         )
 
         # Generative Model
         # Decode the latent sample `z` into the parameters of the observation model
-        # `p_\theta(x | z) = \prod_i B(x_i | g_\theta(x))`
+        # `p_\theta(x | z) = \prod_i NB(x_i | g_\theta(x))`
         self.decoder = nn.Sequential(
-            nn.Linear(in_features=latent_features, out_features=160),
+            nn.Linear(in_features=latent_features, out_features=H3),
             nn.ReLU(),
-            nn.Linear(in_features=160, out_features=640),
+            nn.Linear(in_features=H3, out_features=H2),
             nn.ReLU(),
-            nn.Linear(in_features=640, out_features=2*self.observation_features)
+            nn.Linear(in_features=H2, out_features=H1),
+            nn.ReLU(),
+            nn.Linear(in_features=H1, out_features=2*self.observation_features)
         )
 
         # *** Initialize the final layer for stable mu/theta ***
@@ -313,7 +333,6 @@ class VariationalAutoencoder(nn.Module):
         # split into two parts: one for mu, one for theta
         raw_mu, raw_theta = obs_params.chunk(2, dim=-1)
 
-        # --- FIX APPLIED HERE ---
         # mu is the mean of the Negative Binomial (must be > 0).
         # torch.exp ensures strict positivity, preventing the "lambda >= 0" error.
         mu = softplus(raw_mu) + 1e-4
@@ -332,28 +351,27 @@ class VariationalAutoencoder(nn.Module):
     def forward(self, x) -> Dict[str, Any]:
         """compute the posterior q(z|x) (encoder), sample z~q(z|x) and return the distribution p(x|z) (decoder)"""
 
-        # Guardamos los counts originales aplanados
+        # flatten the input
         x_counts = x.view(x.size(0), -1)
 
         # Transformamos para el encoder: log1p
         x_enc = torch.log1p(x_counts)
 
-        # Dropout sobre la versión para el encoder
+        # apply input dropout
         x_enc = self.input_dropout(x_enc)
 
-        # Posterior q(z|x_enc)
+        # define the posterior q(z|x) / encode x into q(z|x)
         qz = self.posterior(x_enc)
 
-        # Prior p(z)
+        # define the prior p(z)
         pz = self.prior(batch_size=x.size(0))
 
-        # Sample z ~ q(z|x)
+        # sample the posterior using the reparameterization trick: z ~ q(z | x)
         z = qz.rsample()
 
-        # Observation model: solo depende de z
+        # define the observation model p(x|z) = NB(x | g(z))
         px = self.observation_model(z)
 
-        # Devolvemos también x_counts si algún día lo quieres, pero para ahora no hace falta
         return {'px': px, 'pz': pz, 'qz': qz, 'z': z}
 
 
@@ -371,10 +389,14 @@ class VariationalAutoencoder(nn.Module):
 
         return {'px': px, 'pz': pz, 'z': z}
 
-# initialize the VAE
+# ---- initialize the VAE -----
+# Define internal hidden dimensions
+H1 = 640
+H2 = 320  
+H3 = 160
 latent_features = 80
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
-print(f"[INFO] latent features: {latent_features}")
+print(f"[INFO] latent features: {latent_features}, hidden layers: {H1}, {H2}, {H3}")
 
 """
 Implementation of the ELBO and beta ELBO
@@ -419,8 +441,11 @@ class VariationalInference(nn.Module):
 
         return loss, diagnostics, outputs
 
+# Sanity check before training
+print("[INFO] Sanity check of the VAE and Variational Inference...")
 vi = VariationalInference(beta=1.0)
 loss, diagnostics, outputs = vi(vae, X)
+
 print(f"{'loss':6} | mean = {loss:10.3f}, shape: {list(loss.shape)}")
 for key, tensor in diagnostics.items():
     print(f"{key:6} | mean = {tensor.mean():10.3f}, shape: {list(tensor.shape)}")
@@ -459,7 +484,7 @@ vae = vae.to(device)
 # Store generated samples
 generated_samples_all_epochs = []  
 
-# training..
+# --- Training phase: update of the model parameters to minimize the loss function ---
 while epoch < num_epochs:
     epoch+= 1
     training_epoch_data = defaultdict(list)
@@ -488,9 +513,9 @@ while epoch < num_epochs:
     for k, v in training_epoch_data.items():
         training_data[k] += [np.mean(training_epoch_data[k])]
 
-    # --- Validation ---
+    # --- Validation: see how well the model generalizes on unseen data ---
     vae.eval()
-    with torch.no_grad():
+    with torch.no_grad(): # do not update the weights
         val_epoch_data = defaultdict(list)
         for (x_val,) in val_loader:
             x_val = x_val.to(device)
@@ -500,7 +525,7 @@ while epoch < num_epochs:
         for k, v in val_epoch_data.items():
             validation_data[k].append(np.mean(v))
 
-    # --- Generation ---
+    # --- Generation: demonstrate the VAE's ability to generate new samples ---
     with torch.no_grad():
         gen_outputs = vae.sample_from_prior(batch_size=64)
         x_generated = gen_outputs['px'].sample().cpu()
@@ -547,9 +572,24 @@ def get_vae_latents(vae: VariationalAutoencoder,
 
     return torch.cat(all_z, dim=0)
 
-""" Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
-Z_test  = get_vae_latents(vae, test_loader,  device, use_mean=True)
-print(f"[INFO] Z_train shape: {Z_train.shape}, Z_test shape: {Z_test.shape}")  # should be (N_train, latent_features), (N_test, latent_features) """
+""" 
+# Ensure the model is in evaluation mode
+vae.eval()
+
+# Generate latents for the three splits
+print("[INFO] Generating latent representations for all data splits...")
+
+# 1. Training Latents
+Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
+print(f"[INFO] Z_train shape: {Z_train.shape}")
+
+# 2. Validation Latents
+Z_val = get_vae_latents(vae, val_loader, device, use_mean=True)
+print(f"[INFO] Z_val shape: {Z_val.shape}")
+
+# 3. Test Latents (Reserved for final, unbiased evaluation)
+Z_test = get_vae_latents(vae, test_loader, device, use_mean=True)
+print(f"[INFO] Z_test shape: {Z_test.shape}") """
 
 Z_all   = get_vae_latents(vae, full_loader, device, use_mean=True)   # shape (N, latent_dim)
 print(f"[INFO] Z_all shape: {Z_all.shape}") 
