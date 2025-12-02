@@ -443,7 +443,9 @@ class VariationalInference(nn.Module):
 
 # Sanity check before training
 print("[INFO] Sanity check of the VAE and Variational Inference...")
-vi = VariationalInference(beta=1.0)
+vi = VariationalInference(beta=0.0)
+warmup_epochs = 50 
+beta_target = 1.0
 loss, diagnostics, outputs = vi(vae, X)
 
 print(f"{'loss':6} | mean = {loss:10.3f}, shape: {list(loss.shape)}")
@@ -488,6 +490,17 @@ generated_samples_all_epochs = []
 while epoch < num_epochs:
     epoch+= 1
     training_epoch_data = defaultdict(list)
+
+    # 1. Calculate the current annealed beta (linear warm-up)
+    beta_t = min(beta_target, beta_target * (epoch / warmup_epochs)) 
+    
+    # 2. Update the beta parameter in the VariationalInference instance
+    vi.beta = beta_t 
+    
+    # Print the current beta to monitor the schedule
+    if epoch % 10 == 0 or epoch == 1:
+        print(f"Epoch {epoch:03d}: Setting beta to {vi.beta:.4f}")
+        
     vae.train()
 
     # Go through each batch in the training dataset using the loader
