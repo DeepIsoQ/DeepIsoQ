@@ -12,6 +12,8 @@ ffnn_search/logs/*
 # Ignore result artifacts
 ffnn_search/results/*.csv
 ffnn_search/results/*.json
+PCA/results/*.csv
+PCA/results/*.json
 
 job.lsf
 
