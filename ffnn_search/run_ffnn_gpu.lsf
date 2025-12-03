@@ -23,7 +23,7 @@ fi
 echo "[INFO] GPU detected:"
 nvidia-smi
 
-module load cuda/12.1
+module load cuda/12.8.1         # <-- your cuda version  (hint: you can also run 'module avail cuda')
 source ../.venv/bin/activate          # <-- your environment path
 
 echo "=== Starting training ==="
