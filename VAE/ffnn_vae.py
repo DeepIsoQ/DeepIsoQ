@@ -228,18 +228,48 @@ def pearson_mean_gpu(Y_true, Y_pred):
 # ------------------------------
 # One training run (per trial)
 # ------------------------------
+
+def calculate_metrics_on(model, idxs_t, batch_size):
+    model.eval()
+    total_mse, seen = 0.0, 0
+    
+    Y_true_list, Y_pred_list = [], [] # Lists to collect true and predicted tensors
+    
+    with torch.no_grad():
+        for xb, yb in batch_iter(idxs_t, batch_size=batch_size, shuffle=False):
+            with torch.cuda.amp.autocast(enabled=AMP):
+                pb = model(xb)
+                loss = criterion(pb, yb)
+            total_mse += float(loss.item()) * yb.size(0)
+            seen += yb.size(0)
+            
+            # Collect data for Pearson calculation
+            Y_true_list.append(yb.detach().clone())
+            Y_pred_list.append(pb.detach().clone())
+
+    final_mse = total_mse / max(1, seen)
+    
+    # Concatenate all collected tensors
+    Y_true_t = torch.cat(Y_true_list, dim=0)
+    Y_pred_t = torch.cat(Y_pred_list, dim=0)
+    
+    # Calculate Pearson R
+    pearson_r = pearson_mean_gpu(Y_true_t, Y_pred_t)
+    
+    return final_mse, pearson_r, Y_true_t, Y_pred_t # Return the metrics
+
 def train_once(hp, trial_seed):
     """
     hp keys:
-      - name, hidden, act, dropout, batchnorm, lr, batch_size, epochs
+      - name, hidden, act, dropout, batchnorm, lr, batch_size, epochs
     """
     set_seed(trial_seed)
 
     model = FFNN(G, I,
-                 hidden=hp["hidden"],
-                 act=hp["act"],
-                 dropout=hp["dropout"],
-                 batchnorm=hp["batchnorm"]).to(DEVICE)
+                hidden=hp["hidden"],
+                act=hp["act"],
+                dropout=hp["dropout"],
+                batchnorm=hp["batchnorm"]).to(DEVICE)
     model.apply(lambda m: init_linear(m, hp["act"]))
 
     opt = torch.optim.AdamW(model.parameters(), lr=hp["lr"], weight_decay=1e-4)
@@ -291,7 +321,7 @@ def train_once(hp, trial_seed):
     if best_state: 
         model.load_state_dict(best_state)
 
-    val_mse = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
+    val_mse, val_r, _, _ = calculate_metrics_on(model, va_idx_t, batch_size=hp["batch_size"])
     train_time = time.time() - t0
 
     # Per-trial plot
@@ -319,7 +349,7 @@ def train_once(hp, trial_seed):
         "batch_size": hp["batch_size"],
         "epochs_trained": len(train_curve),
         "val_mse": float(val_mse),
-        "val_pearson": float("nan"),
+        "val_pearson": float(val_r),
         "train_time_sec": round(train_time, 1),
     }
     curves = {"train": train_curve, "val": val_curve}
