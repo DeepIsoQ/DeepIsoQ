@@ -7,6 +7,7 @@
 
 
 import os
+import time
 import torch
 import numpy as np
 import matplotlib
@@ -15,120 +16,130 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # ------------------------------
+# Fingerprinting (Job ID)
+# ------------------------------
+JOB_ID = os.environ.get("LSB_JOBID")
+if JOB_ID is None:
+    JOB_ID = f"local_{time.strftime('%Y%m%d_%H%M%S')}"
+
+print(f"[INFO] Detected Job ID: {JOB_ID}")
+
+# ------------------------------
 # Config
 # ------------------------------
 OUTPUT_DIR = "Misc/results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ------------------------------
-# Data path (Portable)
+# Data path
 # ------------------------------
 DATA_PT = os.environ.get("DATA_PT")
 
 if DATA_PT is None:
-    # Fall back to $BLACKHOLE/$USER/data.pt
     bh = os.environ.get("BLACKHOLE")
     user = os.environ.get("USER")
     if bh is None or user is None:
-        raise RuntimeError(
-            "DATA_PT not set and BLACKHOLE/USER env vars missing. "
-            "Either export DATA_PT or run on DTU HPC where BLACKHOLE & USER are defined."
-        )
-    DATA_PT = os.path.join(bh, user, "data.pt")
+        # Fallback default
+        DATA_PT = "data.pt"
+    else:
+        DATA_PT = os.path.join(bh, user, "data.pt")
 
 print(f"[INFO] Loading tensors from: {DATA_PT}")
 # Load on CPU to save GPU resources
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
-###########################################################################
-
-def analyze_and_plot(tensor_data, name, is_already_log=False):
-    """
-    Computes stats and plots histograms for a given tensor.
-    """
-    print("\n" + "="*60)
-    print(f"{name} DATA")
-    print("="*60)
-    
-    # 1. Basic Shape
-    N, F = tensor_data.shape
-    print(f"Shape: {tensor_data.shape}")
-    print(f"  Samples: {N}")
-    print(f"  Features: {F}")
-
-    # 2. Statistics
-    # We use .view(-1) to flatten without copying memory (if contiguous)
-    # converting to numpy makes stat calculations easier/standard
-    flat_data = tensor_data.view(-1).numpy()
-    
-    print("[INFO] Calculating statistics...")
-    zero_count = (flat_data == 0).sum()
-    zero_pct = (zero_count / flat_data.size) * 100
-    
-    print(f"Sparsity: {zero_pct:.2f}% zeros")
-    print(f"Min: {flat_data.min():.4f}")
-    print(f"Max: {flat_data.max():.4f}")
-    print(f"Mean: {flat_data.mean():.4f}")
-    print(f"Median: {np.median(flat_data):.4f}")
-
-    # 3. Plotting
-    print(f"[INFO] Generating plots for {name}...")
-    plt.figure(figsize=(12, 5))
-    
-    # Subplot 1: The data as it is stored
-    plt.subplot(1, 2, 1)
-    # Use bins='auto' or 100. Log scale Y helps visualize the 'long tail'
-    plt.hist(flat_data, bins=100, color='skyblue', edgecolor='black')
-    label = "Log1p Values" if is_already_log else "Raw Values"
-    plt.xlabel(label)
-    plt.ylabel('Frequency (Log Scale)')
-    plt.yscale('log')
-    plt.title(f'{name} Distribution (As Stored)')
-
-    # Subplot 2: Log Transformation
-    plt.subplot(1, 2, 2)
-    if is_already_log:
-        # If already log, plot without log-scale Y axis to see "shape" better
-        plt.hist(flat_data, bins=100, color='salmon', edgecolor='black')
-        plt.xlabel('Log1p Values')
-        plt.ylabel('Frequency (Linear Scale)')
-        plt.title(f'{name} Shape (Linear Y-Axis)')
-    else:
-        # If raw, show what it looks like logged
-        # We add 1e-9 to avoid log(0) errors if not using log1p
-        log_data = np.log1p(flat_data)
-        plt.hist(log_data, bins=100, color='salmon', edgecolor='black')
-        plt.xlabel('Log1p(Values)')
-        plt.ylabel('Frequency')
-        plt.title(f'{name} Distribution (Log1p Transformed)')
-
-    plt.tight_layout()
-    
-    # Save
-    safe_name = name.lower().replace(" ", "_")
-    save_path = os.path.join(OUTPUT_DIR, f"{safe_name}_dist.png")
-    plt.savefig(save_path, dpi=150)
-    plt.close()
-    print(f"[SUCCESS] Plot saved to {save_path}")
-
 # ------------------------------
-# Execution
+# Data Preparation (Standardizing to Log1p)
 # ------------------------------
+print("[INFO] Preparing data...")
 
-# 1. Process Genes (Xg_log1p)
-# Note: These are ALREADY log1p transformed
+# 1. Genes (Already Log1p)
 if "Xg_log1p" in data:
-    X = data["Xg_log1p"].float() # Ensure float
-    analyze_and_plot(X, "GENES (Xg_log1p)", is_already_log=True)
+    genes_flat = data["Xg_log1p"].float().view(-1).numpy()
+    print(f"Genes loaded. Shape: {data['Xg_log1p'].shape}")
 else:
-    print("[WARN] Key 'Xg_log1p' not found in data.pt")
+    raise ValueError("Xg_log1p missing from data.pt")
 
-# 2. Process Transcripts (Y_tx)
-# Note: These are usually Raw counts in your previous scripts
+# 2. Transcripts (Raw -> Convert to Log1p for fair comparison)
 if "Y_tx" in data:
-    Y = data["Y_tx"].float() # Ensure float
-    analyze_and_plot(Y, "TRANSCRIPTS (Y_tx)", is_already_log=False)
+    # We apply log1p here so we compare the same scale for both genes and transcripts in the plots
+    transcripts_raw = data["Y_tx"].float()
+    transcripts_flat = torch.log1p(transcripts_raw).view(-1).numpy()
+    print(f"Transcripts loaded and log-transformed. Shape: {data['Y_tx'].shape}")
 else:
-    print("[WARN] Key 'Y_tx' not found in data.pt")
+    raise ValueError("Y_tx missing from data.pt")
 
-print("\n[INFO] Analysis complete.")
+# ------------------------------
+# Statistics Calculation
+# ------------------------------
+def get_stats(flat_data):
+    zero_count = (flat_data == 0).sum()
+    return {
+        "sparsity": (zero_count / flat_data.size) * 100,
+        "max": flat_data.max(),
+        "mean": flat_data.mean(),
+        "median": np.median(flat_data)
+    }
+
+gene_stats = get_stats(genes_flat)
+tx_stats = get_stats(transcripts_flat)
+
+print(f"\nGENES (Log1p): {gene_stats}")
+print(f"TRANSCRIPTS (Log1p): {tx_stats}")
+
+# ------------------------------
+# Combined Plotting (2x2 Grid)
+# ------------------------------
+print("[INFO] Generating Comparison Plot...")
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Add Global Title with Job ID
+fig.suptitle(f"Gene vs Transcript Distribution (Log1p) | Job: {JOB_ID}", fontsize=16)
+
+# Colors
+GENE_COL = 'skyblue'
+TX_COL = 'salmon'
+BINS = 100
+
+# --- ROW 1: Linear Y-Axis (The Shape) ---
+
+# Top-Left: Genes
+axes[0, 0].hist(genes_flat, bins=BINS, color=GENE_COL, edgecolor='black', alpha=0.7)
+axes[0, 0].set_title(f"Genes (Input)\nSparsity: {gene_stats['sparsity']:.1f}%")
+axes[0, 0].set_ylabel("Frequency (Linear)")
+axes[0, 0].set_xlabel("Expression (Log1p)")
+
+# Top-Right: Transcripts
+axes[0, 1].hist(transcripts_flat, bins=BINS, color=TX_COL, edgecolor='black', alpha=0.7)
+axes[0, 1].set_title(f"Transcripts (Target)\nSparsity: {tx_stats['sparsity']:.1f}%")
+axes[0, 1].set_ylabel("Frequency (Linear)")
+axes[0, 1].set_xlabel("Expression (Log1p)")
+
+# --- ROW 2: Log Y-Axis (The Tails) ---
+
+# Bottom-Left: Genes
+axes[1, 0].hist(genes_flat, bins=BINS, color=GENE_COL, edgecolor='black', alpha=0.7)
+axes[1, 0].set_yscale('log')
+axes[1, 0].set_ylabel("Frequency (Log Scale)")
+axes[1, 0].set_xlabel("Expression (Log1p)")
+axes[1, 0].set_title("Gene Distribution (Log Y-Axis)")
+axes[1, 0].grid(True, which="both", ls="-", alpha=0.2)
+
+# Bottom-Right: Transcripts
+axes[1, 1].hist(transcripts_flat, bins=BINS, color=TX_COL, edgecolor='black', alpha=0.7)
+axes[1, 1].set_yscale('log')
+axes[1, 1].set_ylabel("Frequency (Log Scale)")
+axes[1, 1].set_xlabel("Expression (Log1p)")
+axes[1, 1].set_title("Transcript Distribution (Log Y-Axis)")
+axes[1, 1].grid(True, which="both", ls="-", alpha=0.2)
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to make room for suptitle
+
+# Save with Job ID
+filename = f"data_distribution_comparison_{JOB_ID}.png"
+save_path = os.path.join(OUTPUT_DIR, filename)
+plt.savefig(save_path, dpi=300) 
+plt.close()
+
+print(f"[SUCCESS] Comparison plot saved to {save_path}")
