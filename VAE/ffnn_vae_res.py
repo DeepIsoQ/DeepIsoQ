@@ -200,9 +200,9 @@ class FFNN(nn.Module):
 # ------------------------------
 class ResidualBlock(nn.Module):
     """
-    Bloque residual simple:
-    y = x + F(x)
-    con proyección si cambia la dimensión.
+    Simple residual block:
+    y = act( F(x) + Proj(x) )
+    where a projection layer is applied when input and output dimensions differ.
     """
     def __init__(self, in_dim, out_dim, act="gelu", dropout=0.0, batchnorm=False):
         super().__init__()
@@ -213,7 +213,7 @@ class ResidualBlock(nn.Module):
         self.fc2 = nn.Linear(out_dim, out_dim)
         self.bn2 = nn.BatchNorm1d(out_dim) if batchnorm else nn.Identity()
 
-        # Proyección para el camino residual si cambia la dimensión
+        # Projection for the residual branch if the dimensionality changes
         if in_dim != out_dim:
             self.proj = nn.Linear(in_dim, out_dim)
         else:
@@ -227,13 +227,12 @@ class ResidualBlock(nn.Module):
         out = self.dropout(out)
         out = self.fc2(out)
         out = self.bn2(out)
-        # activación después de sumar (simple e intuitivo)
         return self.act(out + residual)
 
 
 class ResidualFFNN(nn.Module):
     """
-    MLP con bloques residuales usando la misma lista `hidden`.
+    Feed-forward MLP composed of residual blocks using the specified `hidden` layer sizes.
     """
     def __init__(self, in_dim, out_dim, hidden, act="gelu", dropout=0.0, batchnorm=False):
         super().__init__()
