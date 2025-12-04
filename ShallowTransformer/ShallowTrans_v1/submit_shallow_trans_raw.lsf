@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -J shallow_transformer
-#BSUB -cwd /zhome/93/c/214448/DeepIsoQ/ShallowTransformer
+#BSUB -cwd /zhome/93/c/214448/DeepIsoQ/ShallowTransformer/ShallowTrans_v1
 #BSUB -o ffnn_shallow_trans.%J.out
 #BSUB -e ffnn_shallow_trans.%J.err
 
