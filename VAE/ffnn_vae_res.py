@@ -3,9 +3,9 @@
 FFNN Random Search (GPU + AMP)
 
 This script trains feed-forward neural networks to predict isoform 
-expression from gene expression. It performs a random search over 
-architectures (hidden sizes), activations, dropout, batchnorm, learning 
-rates, and batch sizes.
+expression from VAE latent features (instead of raw gene expression).
+It performs a random search over architectures (hidden sizes), 
+activations, dropout, batchnorm, learning rates, and batch sizes.
 
 What is tested:
 - Multiple NN architectures
@@ -54,15 +54,15 @@ DROPOUTS        = [0.0, 0.1, 0.2]
 BATCHNORMS      = [False, True]
 ACTS            = ["tanh", "relu", "gelu", "leakyrelu"]
 
-RESULTS_CSV = "ffnn_search/results/arch_search_results.csv"
-BEST_MODEL_PT = "ffnn_search/results/best_model.pt"
-SUMMARY_JSON = "ffnn_search/results/arch_search_summary.json"
+RESULTS_CSV     = "ffnn_search/results/arch_search_results.csv"
+BEST_MODEL_PT   = "ffnn_search/results/best_model.pt"
+SUMMARY_JSON    = "ffnn_search/results/arch_search_summary.json"
 
 os.environ.setdefault("MPLBACKEND", "Agg")
-TRIAL_FIG_DIR = "ffnn_search/results/figs_trials"
-SUMMARY_FIG_BAR = "ffnn_search/results/summary_val_mse_bar.png"
-SUMMARY_FIG_TOP5 = "ffnn_search/results/top5_val_curves.png"
-BEST_FIG_CURVES = "ffnn_search/results/best_model_curves.png"
+TRIAL_FIG_DIR      = "ffnn_search/results/figs_trials"
+SUMMARY_FIG_BAR    = "ffnn_search/results/summary_val_mse_bar.png"
+SUMMARY_FIG_TOP5   = "ffnn_search/results/top5_val_curves.png"
+BEST_FIG_CURVES    = "ffnn_search/results/best_model_curves.png"
 
 # ------------------------------
 # Repro & matmul knobs
@@ -70,6 +70,7 @@ BEST_FIG_CURVES = "ffnn_search/results/best_model_curves.png"
 def set_seed(s):
     random.seed(s); np.random.seed(s)
     torch.manual_seed(s); torch.cuda.manual_seed_all(s)
+
 set_seed(SEED)
 if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -93,14 +94,31 @@ if DATA_PT is None:
 print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
-
-X = data["Xg_log1p"].float().cpu().numpy()
+# --- Y: isoform expression ---
 Y = torch.log1p(data["Y_tx"].float()).cpu().numpy()
 
+# --- X: now comes from VAE latents, not Xg_log1p ---
+LATENT_PT = os.environ.get("LATENT_PT")
+if LATENT_PT is None:
+    # default: same dir as DATA_PT, file name vae_latents.pt
+    data_dir = os.path.dirname(DATA_PT)
+    LATENT_PT = os.path.join(data_dir, "vae_latents_all_ld32.pt")
+
+print(f"[INFO] Loading VAE latents from: {LATENT_PT}")
+latents = torch.load(LATENT_PT, map_location="cpu")
+
+if "Z" not in latents:
+    raise KeyError(
+        "vae_latents.pt must contain key 'Z' with shape (N, latent_dim). "
+        f"Got keys: {list(latents.keys())}"
+    )
+
+Z = latents["Z"].float().cpu().numpy()   # shape (N, latent_dim)
+X = Z                                    # treat latents as inputs
 
 N, G = X.shape
 _, I = Y.shape
-print(f"[INFO] Shapes: X={X.shape}, Y={Y.shape}")
+print(f"[INFO] Shapes: X(latents)={X.shape}, Y={Y.shape}")
 
 # ------------------------------
 # Split: train / val / test
@@ -113,56 +131,25 @@ print(f"[INFO] Split sizes: train={len(tr_idx)}  val={len(va_idx)}  test={len(te
 
 # ------------------------------
 # Normalize once (train stats) + device tensors
+# (now normalization is applied to latent features instead of genes)
 # ------------------------------
 X_mean = X[tr_idx].mean(axis=0)
 X_std  = X[tr_idx].std(axis=0) + 1e-8
 Xz = (X - X_mean) / X_std
 
-# Xt = torch.from_numpy(Xz).to(DEVICE).float()
-# Yt = torch.from_numpy(Y ).to(DEVICE).float()
-# 
-# tr_idx_t = torch.from_numpy(tr_idx).to(DEVICE)
-# va_idx_t = torch.from_numpy(va_idx).to(DEVICE)
-# te_idx_t = torch.from_numpy(te_idx).to(DEVICE)
+Xt = torch.from_numpy(Xz).to(DEVICE).float()
+Yt = torch.from_numpy(Y ).to(DEVICE).float()
 
-# [NEW] Keep data on CPU, move indices to GPU
-Xt = torch.from_numpy(Xz).float() # Stay on CPU
-Yt = torch.from_numpy(Y ).float() # Stay on CPU
-
-# Indices can stay on GPU (they are tiny integers)
 tr_idx_t = torch.from_numpy(tr_idx).to(DEVICE)
 va_idx_t = torch.from_numpy(va_idx).to(DEVICE)
 te_idx_t = torch.from_numpy(te_idx).to(DEVICE)
 
-
-
-
-# def batch_iter(idxs_t, batch_size, shuffle=True):
-#     if shuffle:
-#         idxs_t = idxs_t[torch.randperm(idxs_t.numel(), device=idxs_t.device)]
-#     for i in range(0, idxs_t.numel(), batch_size):
-#         j = idxs_t[i:i+batch_size]
-#         yield Xt.index_select(0, j), Yt.index_select(0, j)
-
-
 def batch_iter(idxs_t, batch_size, shuffle=True):
     if shuffle:
         idxs_t = idxs_t[torch.randperm(idxs_t.numel(), device=idxs_t.device)]
-    
-    #We need CPU indices to slice the CPU tensor Xt/Yt
-    idxs_cpu = idxs_t.cpu() 
-    
     for i in range(0, idxs_t.numel(), batch_size):
-        j = idxs_cpu[i:i+batch_size] # Slice using CPU indices
-        
-        #1. Slice on CPU
-        x_batch = Xt.index_select(0, j)
-        y_batch = Yt.index_select(0, j)
-        
-        #2. Move to GPU asynchronously (much more memory efficient)
-        yield x_batch.to(DEVICE, non_blocking=True), y_batch.to(DEVICE, non_blocking=True)
-
-
+        j = idxs_t[i:i+batch_size]
+        yield Xt.index_select(0, j), Yt.index_select(0, j)
 
 # ------------------------------
 # Activations + init
@@ -190,7 +177,7 @@ def init_linear(m, act: str):
 # ------------------------------
 class FFNN(nn.Module):
     def __init__(self, in_dim, out_dim, hidden, act="gelu", dropout=0.0, batchnorm=False):
-        super().__init__()  # <-- FIXED
+        super().__init__()
         layers, prev = [], in_dim
         for h in hidden:
             layers.append(nn.Linear(prev, h))
@@ -206,6 +193,62 @@ class FFNN(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+# ------------------------------
+# Residuals
+# ------------------------------
+class ResidualBlock(nn.Module):
+    """
+    Simple residual block:
+    y = act( F(x) + Proj(x) )
+    where a projection layer is applied when input and output dimensions differ.
+    """
+    def __init__(self, in_dim, out_dim, act="gelu", dropout=0.0, batchnorm=False):
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        self.bn1 = nn.BatchNorm1d(out_dim) if batchnorm else nn.Identity()
+        self.act = get_activation(act)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.fc2 = nn.Linear(out_dim, out_dim)
+        self.bn2 = nn.BatchNorm1d(out_dim) if batchnorm else nn.Identity()
+
+        # Projection for the residual branch if the dimensionality changes
+        if in_dim != out_dim:
+            self.proj = nn.Linear(in_dim, out_dim)
+        else:
+            self.proj = nn.Identity()
+
+    def forward(self, x):
+        residual = self.proj(x)
+        out = self.fc1(x)
+        out = self.bn1(out)
+        out = self.act(out)
+        out = self.dropout(out)
+        out = self.fc2(out)
+        out = self.bn2(out)
+        return self.act(out + residual)
+
+
+class ResidualFFNN(nn.Module):
+    """
+    Feed-forward MLP composed of residual blocks using the specified `hidden` layer sizes.
+    """
+    def __init__(self, in_dim, out_dim, hidden, act="gelu", dropout=0.0, batchnorm=False):
+        super().__init__()
+        blocks = []
+        prev = in_dim
+        for h in hidden:
+            blocks.append(ResidualBlock(prev, h, act=act, dropout=dropout, batchnorm=batchnorm))
+            prev = h
+        self.blocks = nn.Sequential(*blocks)
+        self.out_layer = nn.Linear(prev, out_dim)
+        self.act_name = act
+
+    def forward(self, x):
+        h = self.blocks(x)
+        return self.out_layer(h)
+
 
 # ------------------------------
 # Metrics / Eval
@@ -224,67 +267,65 @@ def evaluate_on(model, idxs_t, batch_size):
             seen  += yb.size(0)
     return total / max(1, seen)
 
-# def pearson_mean_gpu(Y_true, Y_pred):
-#     """
-#     Fast GPU Pearson correlation (mean over outputs).
-#     Y_true, Y_pred: (N, I) tensors on GPU
-#     """
-#     yt = Y_true - Y_true.mean(dim=0, keepdim=True)
-#     yp = Y_pred - Y_pred.mean(dim=0, keepdim=True)
-
-#     num = (yt * yp).sum(dim=0)
-#     den = torch.sqrt((yt * yt).sum(dim=0)) * torch.sqrt((yp * yp).sum(dim=0)) + 1e-8
-
-#     r = num / den
-#     return r.nanmean().item()
-
-def pearson_mean_gpu(Y_true, Y_pred, chunk_size=5000):
+def pearson_mean_gpu(Y_true, Y_pred):
     """
-    Computes Pearson correlation in chunks to save memory.
+    Fast GPU Pearson correlation (mean over outputs).
     Y_true, Y_pred: (N, I) tensors on GPU
     """
-    N, I = Y_true.shape
-    corrs = []
-    
-    # Iterate over columns in chunks
-    for i in range(0, I, chunk_size):
-        end = min(i + chunk_size, I)
-        
-        # Slice current chunk
-        yt_c = Y_true[:, i:end]
-        yp_c = Y_pred[:, i:end]
-        
-        # Center them
-        yt_c = yt_c - yt_c.mean(dim=0, keepdim=True)
-        yp_c = yp_c - yp_c.mean(dim=0, keepdim=True)
+    yt = Y_true - Y_true.mean(dim=0, keepdim=True)
+    yp = Y_pred - Y_pred.mean(dim=0, keepdim=True)
 
-        # Compute Pearson for chunk
-        num = (yt_c * yp_c).sum(dim=0)
-        den = torch.sqrt((yt_c**2).sum(dim=0)) * torch.sqrt((yp_c**2).sum(dim=0)) + 1e-8
-        corrs.append(num / den)
+    num = (yt * yp).sum(dim=0)
+    den = torch.sqrt((yt * yt).sum(dim=0)) * torch.sqrt((yp * yp).sum(dim=0)) + 1e-8
 
-    # Combine all chunks
-    all_corrs = torch.cat(corrs)
-    return all_corrs.nanmean().item()
-
+    r = num / den
+    return r.nanmean().item()
 
 # ------------------------------
 # One training run (per trial)
 # ------------------------------
+
+def calculate_metrics_on(model, idxs_t, batch_size):
+    model.eval()
+    total_mse, seen = 0.0, 0
+    
+    Y_true_list, Y_pred_list = [], [] # Lists to collect true and predicted tensors
+    
+    with torch.no_grad():
+        for xb, yb in batch_iter(idxs_t, batch_size=batch_size, shuffle=False):
+            with torch.cuda.amp.autocast(enabled=AMP):
+                pb = model(xb)
+                loss = criterion(pb, yb)
+            total_mse += float(loss.item()) * yb.size(0)
+            seen += yb.size(0)
+            
+            # Collect data for Pearson calculation
+            Y_true_list.append(yb.detach().clone())
+            Y_pred_list.append(pb.detach().clone())
+
+    final_mse = total_mse / max(1, seen)
+    
+    # Concatenate all collected tensors
+    Y_true_t = torch.cat(Y_true_list, dim=0)
+    Y_pred_t = torch.cat(Y_pred_list, dim=0)
+    
+    # Calculate Pearson R
+    pearson_r = pearson_mean_gpu(Y_true_t, Y_pred_t)
+    
+    return final_mse, pearson_r, Y_true_t, Y_pred_t # Return the metrics
+
 def train_once(hp, trial_seed):
     """
     hp keys:
-      - name, hidden, act, dropout, batchnorm, lr, batch_size, epochs
+      - name, hidden, act, dropout, batchnorm, lr, batch_size, epochs
     """
     set_seed(trial_seed)
 
-    model = FFNN(
-        G, I,
-        hidden=hp["hidden"],
-        act=hp["act"],
-        dropout=hp["dropout"],
-        batchnorm=hp["batchnorm"]
-    ).to(DEVICE)
+    model = ResidualFFNN(G, I,                          # changed to ResidualFFNN
+                hidden=hp["hidden"],
+                act=hp["act"],
+                dropout=hp["dropout"],
+                batchnorm=hp["batchnorm"]).to(DEVICE)
     model.apply(lambda m: init_linear(m, hp["act"]))
 
     opt = torch.optim.AdamW(model.parameters(), lr=hp["lr"], weight_decay=1e-4)
@@ -309,8 +350,7 @@ def train_once(hp, trial_seed):
             if GRAD_CLIP is not None:
                 scaler.unscale_(opt)
                 nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-            scaler.step(opt)
-            scaler.update()
+            scaler.step(opt); scaler.update()
             total += float(loss.item()) * yb.size(0)
             seen  += yb.size(0)
 
@@ -329,36 +369,16 @@ def train_once(hp, trial_seed):
             else:
                 noimp += 1
 
-            print(
-                f"[{hp['name']}] ep {epoch:03d} | act={hp['act']} | "
-                f"train {epoch_train:.5f} | val {val_mse:.5f} | "
-                f"lr {opt.param_groups[0]['lr']:.4g}"
-            )
+            print(f"[{hp['name']}] ep {epoch:03d} | act={hp['act']} | train {epoch_train:.5f} | val {val_mse:.5f} | lr {opt.param_groups[0]['lr']:.4g}")
             if noimp >= PATIENCE:
                 print(f"[{hp['name']}] Early stopping.")
                 break
 
-    # ---- load best state and compute final val MSE + Pearson ----
-    if best_state is not None:
+    if best_state: 
         model.load_state_dict(best_state)
 
-    # Final validation MSE
-    val_mse = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
+    val_mse, val_r, _, _ = calculate_metrics_on(model, va_idx_t, batch_size=hp["batch_size"])
     train_time = time.time() - t0
-
-    # Final validation Pearson (for this trial)
-    model.eval()
-    with torch.no_grad():
-        preds_val = []
-        for xb, _ in batch_iter(va_idx_t, batch_size=hp["batch_size"], shuffle=False):
-            with torch.cuda.amp.autocast(enabled=AMP):
-                preds_val.append(model(xb))
-        
-        #Move indices to CPU to slice Yt, then move result to GPU
-        Y_val_t = Yt[va_idx_t.cpu()].to(DEVICE)
-        
-        Y_val_pred = torch.cat(preds_val, dim=0)
-        val_r      = pearson_mean_gpu(Y_val_t, Y_val_pred)
 
     # Per-trial plot
     pathlib.Path(TRIAL_FIG_DIR).mkdir(parents=True, exist_ok=True)
@@ -367,15 +387,10 @@ def train_once(hp, trial_seed):
         fig_path = os.path.join(TRIAL_FIG_DIR, f"curves_{hp['name']}.png")
         plt.figure(figsize=(7.5, 4.5))
         plt.plot(train_curve, label="train MSE")
-        xs_v = [
-            e for e in range(1, len(train_curve)+1)
-            if e == 1 or e % EVAL_EVERY == 0
-        ][:len(val_curve)]
+        xs_v = [e for e in range(1, len(train_curve)+1) if e == 1 or e % EVAL_EVERY == 0][:len(val_curve)]
         plt.plot(xs_v, val_curve, "o-", label="val MSE")
-        plt.xlabel("epoch"); plt.ylabel("MSE")
-        plt.title(f"{hp['name']} — act={hp['act']}")
-        plt.legend(); plt.tight_layout()
-        plt.savefig(fig_path, dpi=150); plt.close()
+        plt.xlabel("epoch"); plt.ylabel("MSE"); plt.title(f"{hp['name']} — act={hp['act']}")
+        plt.legend(); plt.tight_layout(); plt.savefig(fig_path, dpi=150); plt.close()
     except Exception as e:
         print(f"[WARN] Plot failed for {hp['name']}: {e}")
 
@@ -392,17 +407,10 @@ def train_once(hp, trial_seed):
         "val_mse": float(val_mse),
         "val_pearson": float(val_r),
         "train_time_sec": round(train_time, 1),
+        "residual": True,
     }
     curves = {"train": train_curve, "val": val_curve}
-
-    #Garbage collection to clear up GPU memory:
-    del opt
-    del scaler
-    torch.cuda.empty_cache() 
-    
     return rec, model, curves
-
-
 
 # ------------------------------
 # Search space
@@ -428,6 +436,7 @@ def sample_hp(t):
         "lr": rnd.choice(LRS),
         "batch_size": rnd.choice(BATCHES),
         "epochs": MAX_EPOCHS,
+        "residual": True,
     }
 
 # ------------------------------
@@ -438,10 +447,11 @@ results, curves_by_name = [], {}
 best_rec, best_model, best_hp = None, None, None
 
 # CSV header
+pathlib.Path(os.path.dirname(RESULTS_CSV)).mkdir(parents=True, exist_ok=True)
 with open(RESULTS_CSV, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=[
         "name","hidden","act","dropout","batchnorm","lr","momentum","step_size","gamma","batch_size",
-        "epochs_trained","val_mse","val_pearson","train_time_sec"
+        "epochs_trained","val_mse","val_pearson","train_time_sec", "residual"
     ])
     w.writeheader()
 
@@ -453,7 +463,7 @@ for t in range(N_TRIALS):
     with open(RESULTS_CSV, "a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=[
             "name","hidden","act","dropout","batchnorm","lr","momentum","step_size","gamma","batch_size",
-            "epochs_trained","val_mse","val_pearson","train_time_sec"
+            "epochs_trained","val_mse","val_pearson","train_time_sec", "residual"
         ])
         w.writerow(rec)
 
@@ -467,7 +477,7 @@ for t in range(N_TRIALS):
         torch.save({
             "state_dict": best_model.state_dict(),
             "hparams": {k: v for k, v in hp.items()},
-            "X_mean": X_mean, "X_std": X_std,
+            "X_mean": X_mean, "X_std": X_std,   # now mean/std of latents
             "meta": {"G": G, "I": I, "seed": SEED}
         }, BEST_MODEL_PT)
         print(f"[BEST] Updated best by Val: {rec['name']} (val_mse={rec['val_mse']:.6f})")
@@ -485,10 +495,7 @@ with torch.no_grad():
         with torch.cuda.amp.autocast(enabled=AMP):
             preds.append(best_model(xb))
 
-
-#Tensor on GPU - Move indices to CPU to slice Yt, then move result to GPU: 
-Y_test_t = Yt[te_idx_t.cpu()].to(DEVICE)
-
+Y_test_t = Yt[te_idx_t]           # tensor on GPU
 Y_pred_t = torch.cat(preds, dim=0)
 
 test_mse = float(((Y_test_t - Y_pred_t)**2).mean().item())
@@ -498,7 +505,6 @@ best_rec["test_mse"] = test_mse
 best_rec["test_pearson"] = test_r
 
 print(f"[BEST on TEST] act={best_hp['act']} | MSE: {test_mse:.6f} | r: {test_r:.4f}")
-
 
 # ------------------------------
 # Summary files + summary plots
@@ -551,4 +557,5 @@ try:
     plt.close()
 except Exception as e:
     print(f"[WARN] Could not plot top-5 overlay: {e}")
+
 print("[INFO] All done.")

@@ -6,8 +6,8 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=32000] span[hosts=1]"
 #BSUB -cwd .
-#BSUB -o ffnn_search/logs/ffnn_v2_3_%J.out
-#BSUB -e ffnn_search/logs/ffnn_v2_3_%J.err
+#BSUB -o ffnn_search/logs/ffnn_v2_st2_01dec_%J.out
+#BSUB -e ffnn_search/logs/ffnn_v2_st2_01dec_%J.err
 #BSUB -env "all"
 
 # Email notifications (optional)
