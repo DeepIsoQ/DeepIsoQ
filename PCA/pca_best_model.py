@@ -32,11 +32,11 @@ from torch.utils.data import TensorDataset, DataLoader
 # ------------------------------
 BEST_HP = {
     "pca_dim": 1000,
-    "hidden": [512],      # One layer of 512
-    "act": "tanh",        # tanh activation function
-    "lr": 0.003,          # Learning rate 
+    "hidden": [512],      #One layer of 512
+    "act": "tanh",        #tanh activation function
+    "lr": 0.003,          #Learning rate 
     "batch_size": 128,    
-    "dropout": 0.0,       # No dropout
+    "dropout": 0.0,       #No dropout
     "batchnorm": True,    
     "epochs": 50          
 }
@@ -47,7 +47,7 @@ VAL_FRAC  = 0.15
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 AMP       = (DEVICE == "cuda")
 
-# Output Paths
+#Output paths:
 JOB_ID = os.environ.get("LSB_JOBID", "local")
 OUT_DIR = "PCA/results_final"
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -97,12 +97,12 @@ Y = torch.log1p(data["Y_tx"].float()).cpu().numpy()
 
 print("[INFO] Splitting, Scaling, PCA...")
 
-# Split
+#Split the data:
 X_temp, X_test, Y_temp, Y_test = train_test_split(X, Y, test_size=TEST_FRAC, random_state=SEED, shuffle=True)
 rel_val = VAL_FRAC / (1 - TEST_FRAC)
 X_train, X_val, Y_train, Y_val = train_test_split(X_temp, Y_temp, test_size=rel_val, random_state=SEED, shuffle=True)
 
-# Scale
+#Scale: 
 scaler_x = StandardScaler().fit(X_train)
 X_train = scaler_x.transform(X_train)
 X_val   = scaler_x.transform(X_val)
@@ -113,13 +113,13 @@ Y_train = scaler_y.transform(Y_train)
 Y_val   = scaler_y.transform(Y_val)
 Y_test  = scaler_y.transform(Y_test)
 
-# PCA
+#PCA (1000 components): 
 pca = PCA(n_components=BEST_HP["pca_dim"]).fit(X_train)
 X_train = pca.transform(X_train)
 X_val   = pca.transform(X_val)
 X_test  = pca.transform(X_test)
 
-# Tensor Setup
+#Tensor setup: 
 Xt_train = torch.tensor(X_train, dtype=torch.float32)
 Yt_train = torch.tensor(Y_train, dtype=torch.float32)
 Xt_val   = torch.tensor(X_val,   dtype=torch.float32)
@@ -212,19 +212,19 @@ def get_comprehensive_metrics(loader):
             preds_list.append(p.cpu().numpy())
             true_list.append(yb.numpy()) 
     
-    # Stack
+    #Stack: 
     P_scaled = np.vstack(preds_list)
     T_scaled = np.vstack(true_list)
     
     # 1. Scaled MSE
     mse_scaled = ((P_scaled - T_scaled)**2).mean()
 
-    # 2. Unscaled MSE (Inverse Transform)
+    # 2. Unscaled MSE (inverse scaling transformation)
     P_log1p = scaler_y.inverse_transform(P_scaled)
     T_log1p = scaler_y.inverse_transform(T_scaled)
     mse_unscaled = ((P_log1p - T_log1p)**2).mean()
     
-    # 3. Pearson (on Unscaled data)
+    # 3. Pearson correlation (on unscaled data): 
     P_t = torch.tensor(P_log1p, device=DEVICE)
     T_t = torch.tensor(T_log1p, device=DEVICE)
     rho = pearson_corr_gpu(P_t, T_t)
@@ -248,7 +248,7 @@ print("="*60)
 
 
 # ------------------------------
-# 7. Plotting
+# 7. Plotting - Training curve: 
 # ------------------------------
 plt.figure(figsize=(8, 5))
 plt.plot(range(1, len(history["train_mse"])+1), history["train_mse"], label="Train MSE (Scaled)", marker='.')
@@ -264,7 +264,7 @@ plt.close()
 print(f"[SUCCESS] Done. Plot: {PLOT_PATH}")
 
 
-# Save metrics
+#Save metrics: 
 with open(JSON_PATH, "w") as f:
     json.dump({
         "hp": BEST_HP,
