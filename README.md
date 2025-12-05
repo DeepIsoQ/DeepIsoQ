@@ -24,6 +24,11 @@ Or check other versions using: <br>
 Create a virtual environment: <br>
 `python3 -m venv .venv` <br>
 <br>
+
+Then, activate the virtual environment with: <br>
+`source venv/bin/activate`<br>
+<br>
+
 Subsequently pip install relevant Python libraries: <br>
 
 `pip install torch` <br>
