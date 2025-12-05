@@ -32,8 +32,18 @@ Subsequently pip install relevant Python libraries: <br>
 (Might potentially also require the installation of a few others packages). <br>
 <br>
 <br>
+
+**Important:** <br>
+As a first step it is vital that you run the `data_preprocessing.py` file. <br>
+If memory becomes an issue, be sure to use the job script, `data_preprocessing.lsf` <br>
+Using this command: <br>
+`bsub < data_preprocessing.lsf`
+<br>
+(After having validated and updated the content of the job script first).
+<br>
+
 (!) Warning: The code in this repository was created by users with slightly different Python and venv configurations. <br>
-Therefore, sure to always double-check the location of the venv directory, etc. when running one of the lsf job scripts. 
+Therefore, be sure to always double-check the location of the venv directory, etc. when running one of the lsf job scripts. 
 <br>
 <br>
 Enjoy,
