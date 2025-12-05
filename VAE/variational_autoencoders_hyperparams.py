@@ -4,6 +4,7 @@ Variational Autoencoder for Isoform Expression Prediction
 """
 # Commented out IPython magic to ensure Python compatibility.
 from typing import *
+from VAE.variational_autoencoder_nb import FIG_DIR
 from plotting import make_vae_plots
 import matplotlib
 import matplotlib.pyplot as plt
@@ -17,7 +18,8 @@ import os
 import argparse
 from torch import nn, Tensor
 from torch.nn.functional import softplus
-from torch.distributions import Distribution
+from torch.distributions import Distribution, constraints
+from torch.distributions.utils import broadcast_all
 #from torchvision.transforms import ToTensor
 from functools import reduce
 from sklearn.model_selection import train_test_split
@@ -33,6 +35,34 @@ TEST_FRAC       = 0.15
 VAL_FRAC        = 0.15
 DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
 AMP             = (DEVICE == "cuda")
+
+# ------------------------------
+# Helper function for unique file paths
+# ------------------------------
+
+def get_unique_path(base_path):
+    """
+    If base_path exists, append _2, _3, _4, ... before the extension.
+    Example:
+        vae_training_epoch010.png
+        vae_training_epoch010_2.png
+        vae_training_epoch010_3.png
+    """
+    if not os.path.exists(base_path):
+        return base_path
+    
+    root, ext = os.path.splitext(base_path)
+    counter = 2
+    new_path = f"{root}_{counter}{ext}"
+
+    while os.path.exists(new_path):
+        counter += 1
+        new_path = f"{root}_{counter}{ext}"
+    
+    return new_path
+
+FIG_DIR = "vae_figs"
+os.makedirs(FIG_DIR, exist_ok=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -64,7 +94,9 @@ def parse_args():
 args = parse_args()
 print("[INFO] Parsed args:", args)
 
-
+# ------------------------------
+# Implementation of the Gaussian distribution with reparameterization trick
+# -----------------------------
 class ReparameterizedDiagonalGaussian(Distribution):
     """
     A distribution `N(y | mu, sigma I)` compatible with the reparameterization trick given `epsilon ~ N(0, 1)`.
@@ -97,6 +129,69 @@ class ReparameterizedDiagonalGaussian(Distribution):
         )
 
 
+# ------------------------------
+# Implementation of the Negative Binomial distribution
+# ------------------------------
+
+class NegativeBinomial(Distribution):
+    """
+    Negative Binomial with mean `mu` and inverse-dispersion `theta` (>0).
+
+    We implement:
+      - log_prob(x)  : exact NB log-likelihood (used for training)
+      - sample()     : robust NB(mu) approximation (used only for generation)
+    """
+    arg_constraints = {
+        "mu": constraints.positive,
+        "theta": constraints.positive,
+    }
+    support = constraints.nonnegative_integer
+    has_rsample = False
+
+    def __init__(self, mu: Tensor, theta: Tensor, eps: float = 1e-8, validate_args=None):
+        # Broadcast mu and theta to the same shape
+        self.mu, self.theta = broadcast_all(mu, theta)
+        self.eps = eps
+
+        batch_shape = self.mu.size()
+        super().__init__(batch_shape=batch_shape, event_shape=torch.Size(), validate_args=validate_args)
+
+    def _nb_base_dist(self):
+        """
+        Build the underlying torch.distributions.NegativeBinomial
+        with (total_count, probs) parameterization.
+
+        For consistency with:
+          E[X]   = mu
+          Var[X] = mu + mu^2 / theta
+        we use:
+          total_count = theta
+          probs       = theta / (theta + mu)
+        """
+        probs = self.theta / (self.theta + self.mu + self.eps)
+        return torch.distributions.NegativeBinomial(
+            total_count=self.theta,
+            probs=probs
+        )
+
+    def log_prob(self, value: torch.Tensor) -> torch.Tensor:
+        if self._validate_args:
+            self._validate_sample(value)
+        base_dist = self._nb_base_dist()
+        return base_dist.log_prob(value)
+
+    def sample(self, sample_shape: torch.Size = torch.Size()) -> torch.Tensor:
+        base_dist = self._nb_base_dist()
+        return base_dist.sample(sample_shape)
+
+    @property
+    def mean(self) -> torch.Tensor:
+        return self.mu
+
+    @property
+    def variance(self) -> torch.Tensor:
+        return self.mu + (self.mu ** 2) / (self.theta + self.eps)
+
 
 # ------------------------------
 # Data path (portable)
@@ -118,7 +213,7 @@ print(f"[INFO] Loading tensors from: {DATA_PT}")
 data = torch.load(DATA_PT, map_location="cpu", weights_only=False)
 
 
-X = data["Xg_log1p"].float().cpu()
+X = data["X_gene"].float().cpu()
 #Y = torch.log1p(data["Y_tx"].float()).cpu()
 
 
@@ -127,21 +222,23 @@ N, G = X.shape
 print(f"[INFO] Shapes: X={X.shape}")
 
 
-# Define the train, test and validation sets
+# ------------------------------
+# Create train/val/test splits
+# ------------------------------
+
 all_idx = np.arange(N)
 trval_idx, te_idx = train_test_split(all_idx, test_size=TEST_FRAC, random_state=SEED, shuffle=True)
 val_rel = VAL_FRAC / (1.0 - TEST_FRAC)
 tr_idx, va_idx = train_test_split(trval_idx, test_size=val_rel, random_state=SEED, shuffle=True)
-
 
 # ------------------------------
 # Create datasets
 # ------------------------------
 full_dataset = TensorDataset(X)
 
-dset_train = Subset(full_dataset, trval_idx)
+dset_train = Subset(full_dataset, tr_idx)
 dset_test  = Subset(full_dataset, te_idx)
-#dset_val   = Subset(full_dataset, va_idx)
+dset_val   = Subset(full_dataset, va_idx)
 
 # ------------------------------
 # DataLoaders
@@ -153,16 +250,20 @@ eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else 2 * batc
 print(f"[INFO] batch_size={batch_size}, eval_batch_size={eval_batch_size}")
 
 train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True)
-test_loader  = DataLoader(dset_test,  batch_size=eval_batch_size, shuffle=False)
+test_loader = DataLoader(dset_test, batch_size=eval_batch_size, shuffle=False)
+val_loader = DataLoader(dset_val, batch_size=eval_batch_size, shuffle=False)
 
-print(f"[INFO] Loader sizes: train={len(train_loader)}  val={len(test_loader)}")
+# We will return the number of batches in each loader for verification (total samples / batch size)
+print(f"[INFO] Loader sizes: train={len(train_loader)}, val={len(val_loader)}, test={len(test_loader)}")
 
 print("[INFO] Extracting VAE latents for all samples...")
 full_loader = DataLoader(full_dataset, batch_size=eval_batch_size, shuffle=False)
 
 
+# ------------------------------
+# Building the model
+# ------------------------------
 """
-Building the model
 When defining the model the latent layer must act as a bottleneck of information, so that we ensure that we find a strong internal representation. We initialize the VAE with 1 hidden layer in the encoder and decoder using relu units as non-linearity.
 """
 
@@ -173,36 +274,59 @@ class VariationalAutoencoder(nn.Module):
     * a Gaussian posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
     """
 
-    def __init__(self, input_shape:torch.Size, latent_features:int) -> None:
-        super(VariationalAutoencoder, self).__init__()
+    def __init__(self, input_shape: torch.Size, latent_features: int,
+                 input_dropout_p: float = 0.1, hidden_dropout_p: float = 0.0):
+        super().__init__()
+
 
         self.input_shape = input_shape
         self.latent_features = latent_features
         self.observation_features = np.prod(input_shape)
 
+        # Dropout layer on the input
+        self.input_dropout = nn.Dropout(p=input_dropout_p)
 
         # Inference Network
         # Encode the observation `x` into the parameters of the posterior distribution
         # `q_\phi(z|x) = N(z | \mu(x), \sigma(x)), \mu(x),\log\sigma(x) = h_\phi(x)`
         self.encoder = nn.Sequential(
-            nn.Linear(in_features=self.observation_features, out_features=256),
+            nn.Linear(in_features=self.observation_features, out_features=H1),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=128),
+            nn.Linear(in_features=H1, out_features=H2),
             nn.ReLU(),
-            # A Gaussian is fully characterised by its mean \mu and variance \sigma**2
-            nn.Linear(in_features=128, out_features=2*latent_features) # <- note the 2*latent_features
+            nn.Linear(in_features=H2, out_features=H3),
+            nn.ReLU(),
+            nn.Linear(in_features=H3, out_features=2*latent_features)
         )
 
         # Generative Model
         # Decode the latent sample `z` into the parameters of the observation model
-        # `p_\theta(x | z) = \prod_i B(x_i | g_\theta(x))`
+        # `p_\theta(x | z) = \prod_i NB(x_i | g_\theta(x))`
         self.decoder = nn.Sequential(
-            nn.Linear(in_features=latent_features, out_features=128),
+            nn.Linear(in_features=latent_features, out_features=H3),
             nn.ReLU(),
-            nn.Linear(in_features=128, out_features=256),
+            nn.Linear(in_features=H3, out_features=H2),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=2*self.observation_features)
+            nn.Linear(in_features=H2, out_features=H1),
+            nn.ReLU(),
+            nn.Linear(in_features=H1, out_features=2*self.observation_features)
         )
+
+        # *** Initialize the final layer for stable mu/theta ***
+        # The last layer is responsible for raw_mu and raw_theta.
+        # Initialize bias to a small positive value (e.g., log(1e-2)) so mu starts > 0.
+        # Initialize weights to be small.
+        final_layer = self.decoder[-1]
+        
+        # Small weight initialization
+        nn.init.normal_(final_layer.weight, mean=0., std=1e-4)
+        
+        # Bias initialization: set raw_mu bias to ensure exp(bias) starts at a reasonable value (e.g., 1e-2)
+        # The layer output is [raw_mu, raw_theta]. raw_mu occupies the first half of the bias vector.
+        half_out_features = final_layer.out_features // 2
+        nn.init.constant_(final_layer.bias[:half_out_features], -5.0) # bias for raw_mu: exp(-5.0) ~ 0.0067
+        nn.init.constant_(final_layer.bias[half_out_features:], 0.0)  # bias for raw_theta
+        # ----------------------------------------------------------------------
 
         # define the parameters of the prior, chosen as p(z) = N(0, I)
         self.register_buffer('prior_params', torch.zeros(torch.Size([1, 2*latent_features])))
@@ -226,22 +350,42 @@ class VariationalAutoencoder(nn.Module):
         return ReparameterizedDiagonalGaussian(mu, log_sigma)
 
     def observation_model(self, z:Tensor) -> Distribution:
-        """return the distribution `p(x|z)`"""
+        """
+        return the distribution p(x|z) as Negative Binomial with mean mu(z)
+        and inverse-dispersion theta(z) > 0.
+        """
         obs_params = self.decoder(z)
-        mu, log_sigma = obs_params.chunk(2, dim=-1)
-        # reshape the output to the input shape
-        mu = mu.view(-1, *self.input_shape) 
-        log_sigma = log_sigma.view(-1, *self.input_shape)
-        return ReparameterizedDiagonalGaussian(mu, log_sigma)
+        # split into two parts: one for mu, one for theta
+        raw_mu, raw_theta = obs_params.chunk(2, dim=-1)
+
+        # mu is the mean of the Negative Binomial (must be > 0).
+        # torch.exp ensures strict positivity, preventing the "lambda >= 0" error.
+        mu = softplus(raw_mu) + 1e-4
+        
+        # theta is the inverse-dispersion parameter (must be > 0).
+        # softplus is fine here, but we keep the epsilon for safety.
+        theta = softplus(raw_theta) + 1e-4
+
+        # reshape back to input shape
+        mu = mu.view(-1, *self.input_shape)
+        theta = theta.view(-1, *self.input_shape)
+
+        return NegativeBinomial(mu, theta)
 
     def forward(self, x) -> Dict[str, Any]:
         """compute the posterior q(z|x) (encoder), sample z~q(z|x) and return the distribution p(x|z) (decoder)"""
 
         # flatten the input
-        x = x.view(x.size(0), -1)
+        x_counts = x.view(x.size(0), -1)
+
+        # Transformamos para el encoder: log1p
+        x_enc = torch.log1p(x_counts)
+
+        # apply input dropout
+        x_enc = self.input_dropout(x_enc)
 
         # define the posterior q(z|x) / encode x into q(z|x)
-        qz = self.posterior(x)
+        qz = self.posterior(x_enc)
 
         # define the prior p(z)
         pz = self.prior(batch_size=x.size(0))
@@ -249,7 +393,7 @@ class VariationalAutoencoder(nn.Module):
         # sample the posterior using the reparameterization trick: z ~ q(z | x)
         z = qz.rsample()
 
-        # define the observation model p(x|z) = N(x | g(z))
+        # define the observation model p(x|z) = NB(x | g(z))
         px = self.observation_model(z)
 
         return {'px': px, 'pz': pz, 'qz': qz, 'z': z}
@@ -271,6 +415,10 @@ class VariationalAutoencoder(nn.Module):
 
 # initialize the VAE
 latent_features = args.latent_dim
+H1 = latent_features * 6
+H2 = latent_features * 4
+H3 = latent_features * 2
+
 print(f"[INFO] Using latent_dim={latent_features}")
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 
@@ -284,7 +432,7 @@ Implementation of the ELBO and beta ELBO
 # instead of summing when reducing log probabilities.
 def reduce(x:Tensor) -> Tensor:
     """for each datapoint: sum over all dimensions"""
-    return x.view(x.size(0), -1).mean(dim=1)
+    return x.view(x.size(0), -1).sum(dim=1)
 
 class VariationalInference(nn.Module):
     def __init__(self, beta:float=1.):
@@ -320,8 +468,11 @@ class VariationalInference(nn.Module):
 
         return loss, diagnostics, outputs
 
+# Sanity check before training
+print("[INFO] Sanity check of the VAE and Variational Inference...")
 vi = VariationalInference(beta=1.0)
 loss, diagnostics, outputs = vi(vae, X)
+
 print(f"{'loss':6} | mean = {loss:10.3f}, shape: {list(loss.shape)}")
 for key, tensor in diagnostics.items():
     print(f"{key:6} | mean = {tensor.mean():10.3f}, shape: {list(tensor.shape)}")
@@ -335,6 +486,9 @@ from collections import defaultdict
 # define the models, evaluator and optimizer
 
 # Evaluator: Variational Inference
+epoch = 0
+num_epochs = args.epochs 
+
 beta = args.beta
 vi = VariationalInference(beta=beta)
 
@@ -346,8 +500,7 @@ max_grad_norm = args.max_grad_norm
 training_data = defaultdict(list)
 validation_data = defaultdict(list)
 
-epoch = 0
-num_epochs = args.epochs
+
 
 print(f"[INFO] beta={beta}, lr={args.lr}, epochs={num_epochs}, max_grad_norm={max_grad_norm}")
 
@@ -391,12 +544,15 @@ while epoch < num_epochs:
 
     # --- Validation ---
     vae.eval()
-    with torch.no_grad():
-        x_val, = next(iter(test_loader))
-        x_val = x_val.to(device)
-        loss, diagnostics, outputs = vi(vae, x_val)
-        for k, v in diagnostics.items():
-            validation_data[k].append(v.mean().item())
+    with torch.no_grad(): # do not update the weights
+        val_epoch_data = defaultdict(list)
+        for (x_val,) in val_loader:
+            x_val = x_val.to(device)
+            loss, diagnostics, _ = vi(vae, x_val)
+            for k, v in diagnostics.items():
+                val_epoch_data[k].append(v.mean().item())
+        for k, v in val_epoch_data.items():
+            validation_data[k].append(np.mean(v))
 
     # --- Generation ---
     with torch.no_grad():
@@ -408,7 +564,12 @@ while epoch < num_epochs:
 
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
-    make_vae_plots(vae, x, outputs, training_data, validation_data)
+    if epoch == num_epochs:
+        fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}.png")
+        fig_path = get_unique_path(fig_path)  
+        make_vae_plots(vae, x, outputs, training_data, validation_data,
+                    save_path=fig_path)
+        print(f"[INFO] Saved VAE training plot to {fig_path}")
 
 def get_vae_latents(vae: VariationalAutoencoder,
                     loader: DataLoader,
@@ -438,10 +599,6 @@ def get_vae_latents(vae: VariationalAutoencoder,
             all_z.append(z_batch.cpu())
 
     return torch.cat(all_z, dim=0)
-
-""" Z_train = get_vae_latents(vae, train_loader, device, use_mean=True)
-Z_test  = get_vae_latents(vae, test_loader,  device, use_mean=True)
-print(f"[INFO] Z_train shape: {Z_train.shape}, Z_test shape: {Z_test.shape}")  # should be (N_train, latent_features), (N_test, latent_features) """
 
 Z_all   = get_vae_latents(vae, full_loader, device, use_mean=True)   # shape (N, latent_dim)
 print(f"[INFO] Z_all shape: {Z_all.shape}")
