@@ -312,6 +312,17 @@ def evaluate_on(model: nn.Module, idxs_t: torch.Tensor, batch_size: int) -> floa
             seen  += yb.size(0)
     return total / max(1, seen)
 
+def evaluate_pearson_on(model: nn.Module, idxs_t: torch.Tensor, batch_size: int) -> float:
+    model.eval()
+    preds = []
+    with torch.no_grad():
+        for xb, _ in batch_iter(idxs_t, batch_size=batch_size, shuffle=False):
+            with torch.cuda.amp.autocast(enabled=AMP):
+                preds.append(model(xb))
+    Y_true = Yt[idxs_t]
+    Y_pred = torch.cat(preds, dim=0)
+    return pearson_mean_gpu(Y_true, Y_pred)
+
 # ------------------------------
 # One training run (per trial)
 # ------------------------------
@@ -367,6 +378,8 @@ def train_once(hp: dict, trial_seed: int):
 
         if epoch == 1 or epoch % EVAL_EVERY == 0:
             val_mse = evaluate_on(model, va_idx_t, batch_size=hp["batch_size"])
+            val_r   = evaluate_pearson_on(model, va_idx_t, batch_size=hp["batch_size"])
+
             val_curve.append(val_mse)
             sch.step(val_mse)
 
@@ -376,8 +389,9 @@ def train_once(hp: dict, trial_seed: int):
                 f"heads={hp['n_heads']} layers={hp['num_layers']} "
                 f"pool={hp['pooling']} act={hp['activation']} | "
                 f"train {epoch_train:.5f} | val {val_mse:.5f} | "
-                f"lr {opt.param_groups[0]['lr']:.4g}"
+                f"r {val_r:.4f} | lr {opt.param_groups[0]['lr']:.4g}"
             )
+
 
             if val_mse < best_val - 0.0:
                 best_val   = val_mse
@@ -435,7 +449,7 @@ def train_once(hp: dict, trial_seed: int):
         "batch_size":     hp["batch_size"],
         "epochs_trained": len(train_curve),
         "val_mse":        float(val_mse),
-        "val_pearson":    float("nan"),
+        "val_pearson": float(val_r),
         "train_time_sec": round(train_time, 1),
     }
     curves = {"train": train_curve, "val": val_curve}

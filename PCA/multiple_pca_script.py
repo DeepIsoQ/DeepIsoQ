@@ -467,13 +467,14 @@ print(f"Test MSE (Unscaled) - Comparable to normal FFNN Model: {final_mse:.4f}")
 print(f"Test Pearson:        {pearson:.4f}")
 
 # Save Summary
+# [FIX] Cast numpy/torch floats to standard python floats for JSON serialization
 summary = {
     "stage": STAGE,
     "job_id": JOB_ID,
     "best_config": best_rec,
     "metrics": {
-        "test_mse_unscaled": final_mse,
-        "test_pearson": pearson
+        "test_mse_unscaled": float(final_mse), # <--- Cast to float()
+        "test_pearson": float(pearson)         # <--- Cast to float()
     }
 }
 with open(SUMMARY_JSON, "w") as f:

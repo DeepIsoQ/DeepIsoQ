@@ -254,7 +254,7 @@ def train_and_evaluate(current_pca_dim):
     
     final_mse = ((P_log1p - T_log1p)**2).mean()
     
-    # Save training curve
+    # Save training curve for this specific dim
     pathlib.Path(TRIAL_FIG_DIR).mkdir(parents=True, exist_ok=True)
     plt.figure()
     plt.plot(train_curve, label="Train")
@@ -264,10 +264,11 @@ def train_and_evaluate(current_pca_dim):
     plt.savefig(os.path.join(TRIAL_FIG_DIR, f"curve_pca_{current_pca_dim}.png"))
     plt.close()
 
+    # [FIX] Explicitly cast to standard python float() for JSON safety
     return {
-        "pca_dim": current_pca_dim,
-        "test_mse_unscaled": final_mse,
-        "test_mse_scaled": ((P_scaled - T_scaled)**2).mean(),
+        "pca_dim": int(current_pca_dim), # Cast to int
+        "test_mse_unscaled": float(final_mse), # Cast to float
+        "test_mse_scaled": float(((P_scaled - T_scaled)**2).mean()), # Cast to float
         "time_sec": round(time.time() - t0, 1)
     }
 
@@ -292,7 +293,7 @@ for dim in PCA_DIMS_TO_TEST:
         w.writerow(res)
     
     print(f"[RESULT] Dim {dim} -> Test MSE (Unscaled): {res['test_mse_unscaled']:.4f}")
-
+ 
 # ------------------------------
 # Summary Plot
 # ------------------------------
