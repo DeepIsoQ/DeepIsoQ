@@ -5,8 +5,8 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=32GB]"
 #BSUB -W 24:00
-#BSUB -o fine_tuning/logs/finetune_debug.%J.out
-#BSUB -e fine_tuning/logs/finetune_debug.%J.err
+#BSUB -o fine_tuning/logs/finetune_8.%J.out
+#BSUB -e fine_tuning/logs/finetune_8.%J.err
 
 # email
 #BSUB -u s243310@dtu.dk
@@ -49,6 +49,6 @@ EOF
 # Run fine-tuning
 # ------------------------------------------
 echo "=== PHASE 2: fine-tuning BulkFormer + FFNN head ==="
-python -u ~/DeepIsoQ/Bulkformer/fine_tuning/fine_tuning_debug.py
+python -u ~/DeepIsoQ/Bulkformer/fine_tuning/finetune_phase2.py
 
 echo "=== DONE ==="

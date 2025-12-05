@@ -10,7 +10,7 @@
 #BSUB -e ffnn_search/logs/ffnn_v2_st2_01dec_%J.err
 #BSUB -env "all"
 
-# Email notifications (optional)
+# Email notifications 
 #BSUB -u s243310@dtu.dk
 #BSUB -B
 #BSUB -N
