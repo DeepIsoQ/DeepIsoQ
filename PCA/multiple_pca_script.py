@@ -5,10 +5,10 @@
 
 """
 PCA FFNN Random Search (GPU + AMP) — 2-stage
-Adapted for PCA Data (1000 Dim) vs Raw Data comparison.
+Adapted from ffnn_search_v2.py to use PCA-processed data.
 
-Stage 1: Random search (100 trials)
-Stage 2: Retrain top-5 configs
+Stage 1: Random search (100 trials, see N_TRIALS)
+Stage 2: Retrain top-5 configs (see TOP_K_STAGE2)
 Output: Metrics unscaled back to log1p space for direct comparison with raw models.
 """
 
@@ -16,7 +16,7 @@ import os, json, math, random, csv, time, pathlib, ast
 import torch
 import numpy as np
 import matplotlib
-matplotlib.use('Agg') # Safe for HPC
+matplotlib.use('Agg') #This is done to make it a bit more safe when running it on the HPC
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.optim as optim
@@ -34,7 +34,7 @@ VAL_FRAC  = 0.15
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 AMP       = (DEVICE == "cuda")
 
-# PCA Specific
+#PCA components - we know from prior experiments that 1000 is a good value! 
 PCA_DIM   = 1000
 
 # ---- STAGE CONTROL ----
@@ -43,6 +43,7 @@ PCA_DIM   = 1000
 
 STAGE        = 1   #<--------------------- (!) UPDATE THIS VALUE TO 2, FOR STAGE 2 RUN (!)
 # 1 = Search, 2 = Retrain Top-K
+
 JOB_ID_STAGE1 = "INSERT_JOB_ID_FROM_STAGE1_HERE"  #<--- (!) UPDATE THIS VALUE FOR STAGE 2 RUN (!)
 
 TOP_K_STAGE2 = 5          
@@ -73,9 +74,10 @@ elif STAGE == 2:
     PRUNE_FACTOR    = None
 
 # ------------------------------
-# Dynamic Output Paths (fingerprinting based on job id)
+# Dynamic Output Paths
 # ------------------------------
-# Use Job ID to prevent overwriting results if you run multiple jobs
+
+#Use Job ID to prevent overwriting results if you run multiple jobs
 JOB_ID = os.environ.get("LSB_JOBID")
 if JOB_ID is None:
     JOB_ID = f"local_{time.strftime('%Y%m%d_%H%M%S')}"
@@ -86,7 +88,7 @@ BASE_DIR = "PCA/results"
 os.makedirs(BASE_DIR, exist_ok=True)
 TRIAL_FIG_DIR   = os.path.join(BASE_DIR, f"figs_trials_{JOB_ID}")
 
-# Define paths based on Stage + Job ID
+#Define paths based on stage (1 or 2) + job ID:
 if STAGE == 1:
     RESULTS_CSV      = os.path.join(BASE_DIR, f"pca_results_stage1_{JOB_ID}.csv")
     SUMMARY_JSON     = os.path.join(BASE_DIR, f"pca_summary_stage1_{JOB_ID}.json")
@@ -102,7 +104,7 @@ elif STAGE == 2:
 
 # IMPORTANT: To run Stage 2, you must point this to the SPECIFIC CSV file from Stage 1
 
-# Update this filename manually AFTER Stage 1 finishes!
+#Update this filename manually AFTER Stage 1 finishes!
 STAGE1_INPUT_CSV = f"PCA/results/pca_results_stage1_{JOB_ID_STAGE1}.csv" #Remember to update for stage 2, in the config section (!)
 
 # ------------------------------
@@ -214,7 +216,7 @@ class FFNN(nn.Module):
 # Hyperparameter optimization helpers
 # ------------------------------
 def sample_arch(rnd):
-    depth = rnd.choice(DEPTH_CHOICES) #Randomly choose depth of model (amount of hidden layers). 
+    depth = rnd.choice(DEPTH_CHOICES) #Randomly choose depth of model (amount of layers). 
     hidden = [rnd.choice(WIDTH_CHOICES) for _ in range(depth)] #Amount of neurons in each hidden layer, randomly chosen. 
     return hidden
 
@@ -245,7 +247,7 @@ criterion = nn.MSELoss()
 def train_once(hp, trial_seed, global_best_val=None, stage=1):
     set_seed(trial_seed)
     
-    # Loaders specific to this batch size
+    #Loaders specific to this batch size
     tr_loader = get_loader(train_ds, hp["batch_size"], True)
     va_loader = get_loader(val_ds, hp["batch_size"], False)
 
@@ -271,9 +273,26 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
                 preds = model(xb)
                 loss = criterion(preds, yb)
             scaler.scale(loss).backward()
-            if GRAD_CLIP:
-                scaler.unscale_(opt)
-                nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+
+            #Gradient Clipping - Dealing with exploding gradients: 
+            if GRAD_CLIP: #Mostly as a safeguard, as some of the models can be quite large or otherwise act in unexpected ways. 
+                
+                #AMP and Gradient clipping background (as these 2 things were not really explained in the course): 
+                
+                #In order to avoid underflow (i.e. the limit for how small float numbers can be represented on a computer), you use AMPs.
+                #Underflow e.g. cause very small gradient values to become zero. This creates a problem. 
+                
+                #AMP (Automatic Mixed Precision) is a manager which fixes the underflow problem by multipling the gradients 
+                #by a scaling factor before backpropagation, in order to instead make them a really large number. 
+
+                #Gradient clipping is a technique which helps fix exploding gradients by limiting the maximum size of the gradients. 
+                #If gradients are larger than the limit (e.g. 1.0), then it shrinks all gradients proportionally 
+                #so that all the gradients fit under the clipping limit. 
+
+                scaler.unscale_(opt) #Undo the AMP scaling.
+                nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP) #Clip the gradients, so they are below the gradient clipping limit. 
+                #Do this not to get exploding gradients. 
+
             scaler.step(opt)
             scaler.update()
             total_loss += loss.item() * yb.size(0)
@@ -282,7 +301,7 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
         ep_train = total_loss / counts
         train_curve.append(ep_train)
 
-        # Validation
+        #Validation
         if epoch == 1 or epoch % EVAL_EVERY == 0:
             model.eval()
             val_loss, vcounts = 0.0, 0
@@ -303,8 +322,14 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
             else:
                 noimp += 1
 
-            # Pruning (Stage 1 only)
+            # Pruning (Stage 1 only):
+
+            #Stop training immediately if the current model is significantly worse than the best model found in previous trials:
             if stage == 1 and global_best_val < math.inf and MIN_PRUNE_EPOCH and epoch >= MIN_PRUNE_EPOCH:
+                
+                #Grace Period: Wait until MIN_PRUNE_EPOCH epochs have passed, before allowing pruning. (as some models need some time before they start converging at good performance)
+                
+                #Early stop if the current model stopped improving compared to its past version: 
                 if ep_val > PRUNE_FACTOR * global_best_val:
                     print(f"[{hp['name']}] Pruned at ep {epoch}.")
                     break
@@ -315,7 +340,7 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
                 print(f"[{hp['name']}] Early stopping.")
                 break
 
-    # Save Plot
+    #Save Plot - training curves: 
     pathlib.Path(TRIAL_FIG_DIR).mkdir(parents=True, exist_ok=True)
     try:
         plt.figure(figsize=(7, 4))
@@ -328,9 +353,9 @@ def train_once(hp, trial_seed, global_best_val=None, stage=1):
         plt.close()
     except: pass
 
-    # Return Metrics
-    # NOTE: The val_mse returned here is SCALED. 
-    # This is fine for picking the best model, but not for final reporting.
+    #Return Metrics
+    #Note: The val_mse returned here is SCALED. 
+    #This is fine for picking the best model, but not for the final reporting, as the other models use the MSE from the unscaled data.
     rec = {
         "name": hp["name"],
         "hidden": hp["hidden"],
@@ -388,7 +413,7 @@ best_rec = None
 best_state_global = None
 GLOBAL_BEST_VAL = math.inf
 
-# CSV Init
+#CSV Init
 with open(RESULTS_CSV, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=["name","hidden","act","dropout","batchnorm","lr","batch_size","epochs","val_mse","time"])
     w.writeheader()
@@ -397,22 +422,23 @@ for i, hp in enumerate(trials_to_run):
     print(f"\n=== Trial {i+1}/{len(trials_to_run)}: {hp['name']} ===")
     rec, state, val_score = train_once(hp, SEED+i, GLOBAL_BEST_VAL, STAGE)
     
-    # Save to CSV
+    #Save to CSV
     with open(RESULTS_CSV, "a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=rec.keys())
         w.writerow(rec)
     
     results.append(rec)
 
-    # Track Global Best
+    #Track global best: 
     if STAGE == 1:
         GLOBAL_BEST_VAL = min(GLOBAL_BEST_VAL, val_score)
 
-    # Save Best Model Checkpoint
+    #Save the best model checkpoint, every time we find a new best: 
     if best_rec is None or val_score < best_rec["val_mse"]:
         best_rec = rec
         best_state_global = state
-        # Save model + scaler stats
+        
+        #Save model + scaler stats
         torch.save({
             "state_dict": state,
             "hp": hp,
@@ -445,13 +471,13 @@ with torch.no_grad():
 P_scaled = np.vstack(preds_list)
 T_scaled = np.vstack(targs_list)
 
-# INVERSE TRANSFORM
+#Inverse scaling transformation back to the log1p space: 
 P_log1p = scaler_y.inverse_transform(P_scaled)
 T_log1p = scaler_y.inverse_transform(T_scaled)
 
 final_mse = ((P_log1p - T_log1p)**2).mean()
 
-# Fast GPU Pearson
+#GPU-friendly Pearson correlation calculation:
 yt = torch.tensor(T_log1p, device=DEVICE)
 yp = torch.tensor(P_log1p, device=DEVICE)
 yt = yt - yt.mean(0, keepdim=True)
@@ -473,8 +499,8 @@ summary = {
     "job_id": JOB_ID,
     "best_config": best_rec,
     "metrics": {
-        "test_mse_unscaled": float(final_mse), # <--- Cast to float()
-        "test_pearson": float(pearson)         # <--- Cast to float()
+        "test_mse_unscaled": float(final_mse), #The float() is important to prevent an error when writing the JSON file!
+        "test_pearson": float(pearson)         #Same as above. 
     }
 }
 with open(SUMMARY_JSON, "w") as f:
