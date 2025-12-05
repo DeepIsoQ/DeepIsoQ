@@ -6,6 +6,7 @@ The output will be the transcript expression in the normal dimensions.
 (!) If you haven't already, be sure to read the README file in the main DeepIsoQ folder. 
 Furthermore, be sure that you have set up a proper virtual environment (venv) and that you have run the preprocessing script, etc. 
 
+Remark about Python scripts: Be sure to update some of the corresponding content of the job scripts, if you plan on running the scripts on your own computer. I.e. ensure that the venv name of the jobscript, and the venv that you are using, matches. 
 
 
 OVERVIEW OF THE FILES:
