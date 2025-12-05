@@ -54,15 +54,15 @@ DROPOUTS        = [0.0, 0.1, 0.2]
 BATCHNORMS      = [False, True]
 ACTS            = ["tanh", "relu", "gelu", "leakyrelu"]
 
-RESULTS_CSV     = "ffnn_search/results/arch_search_results.csv"
-BEST_MODEL_PT   = "ffnn_search/results/best_model.pt"
-SUMMARY_JSON    = "ffnn_search/results/arch_search_summary.json"
+RESULTS_CSV     = "../results/arch_search_results.csv"
+BEST_MODEL_PT   = "../results/best_model.pt"
+SUMMARY_JSON    = "../results/arch_search_summary.json"
 
 os.environ.setdefault("MPLBACKEND", "Agg")
-TRIAL_FIG_DIR      = "ffnn_search/results/figs_trials"
-SUMMARY_FIG_BAR    = "ffnn_search/results/summary_val_mse_bar.png"
-SUMMARY_FIG_TOP5   = "ffnn_search/results/top5_val_curves.png"
-BEST_FIG_CURVES    = "ffnn_search/results/best_model_curves.png"
+TRIAL_FIG_DIR      = "../results/figs_trials"
+SUMMARY_FIG_BAR    = "../results/summary_val_mse_bar.png"
+SUMMARY_FIG_TOP5   = "../results/top5_val_curves.png"
+BEST_FIG_CURVES    = "../results/best_model_curves.png"
 
 # ------------------------------
 # Repro & matmul knobs
