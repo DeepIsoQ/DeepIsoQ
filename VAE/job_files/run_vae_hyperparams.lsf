@@ -1,0 +1,48 @@
+#!/bin/bash 
+#BSUB -J vae_gpu
+#BSUB -q gpuv100
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -W 24:00                 
+#BSUB -n 4
+#BSUB -R "rusage[mem=32000] span[hosts=1]"
+#BSUB -cwd .
+#BSUB -o logs/vae_%J.out
+#BSUB -env "all"
+
+# (optional) email
+#BSUB -u s243275@dtu.dk    # <-- your email
+#BSUB -B
+#BSUB -N
+
+# Safety: check GPU
+if ! command -v nvidia-smi &> /dev/null; then
+    echo "[ERROR] GPU not found. Exiting."
+    exit 1
+fi
+
+echo "[INFO] GPU detected:"
+nvidia-smi
+
+module load cuda/12.1
+source ../../../deepL_venv/bin/activate          # <-- your environment path
+
+
+echo "=== Starting VAE sweep ==="
+
+for z in 32 64 128; do
+  for beta in 0.5 1.0; do
+    echo ">>> Running config: z=$z, beta=$beta"
+
+    python3 ../variational_autoencoders_hyperparams.py \
+      --latent-dim $z \
+      --beta $beta \
+      --lr 1e-4 \
+      --batch-size 128 \
+      --epochs 200 \
+      --tag "z${z}_b${beta}_lr3e4_bs128"
+
+    echo ">>> Finished config: z=$z, beta=$beta"
+  done
+done
+
+echo "=== All runs finished ==="
