@@ -196,7 +196,7 @@ for epoch in range(N_EPOCHS):
 total_time = time.time() - start_time
 
 # ------------------------------
-# Final Test Evaluation (UNSCALED)
+# Final Test Evaluation (unscaled data)
 # ------------------------------
 
 #Note: In order to make the model comparable to the non-PCA script, we need to inverse transform
