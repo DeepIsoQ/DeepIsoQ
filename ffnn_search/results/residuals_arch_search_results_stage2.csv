@@ -1,0 +1,4 @@
+name,hidden,act,dropout,batchnorm,lr,momentum,step_size,gamma,batch_size,epochs_trained,val_mse,val_pearson,train_time_sec,residual
+L3_256_2048_2048_t3_stage2,"[256, 2048, 2048]",leakyrelu,0.0,True,0.001,-,-,-,192,100,0.926542116917902,0.7169321775436401,514.4,True
+L1_512_t0_stage2,[512],gelu,0.0,True,0.002,-,-,-,192,135,0.9499939671507467,0.7106590867042542,264.5,True
+L1_256_t10_stage2,[256],gelu,0.0,True,0.002,-,-,-,128,125,0.9813627686590066,0.6987672448158264,190.4,True
