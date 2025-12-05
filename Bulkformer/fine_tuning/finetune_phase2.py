@@ -45,7 +45,7 @@ GRAD_CLIP = 1.0
 MAX_EPOCHS_FT = 10
 PATIENCE_FT = 3
 EVAL_EVERY = 1
-BATCH_SIZE_FT = 1  # batch_size=1 to be safe with memory
+BATCH_SIZE_FT = 4  # batch_size=1 was safe with memory
 
 # different LR for encoder vs head
 LR_ENCODER = 1e-5

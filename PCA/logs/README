@@ -1,0 +1,36 @@
+Welcome to the README file for the folder dedicated to the PCA-based FFNN models.
+
+Using PCA to compress the gene bulk dataset, we train and test FFNN models adapt to the PCA input.
+The output will be the transcript expression in the normal dimensions. 
+
+(!) If you haven't already, be sure to read the README file in the main DeepIsoQ folder. 
+Furthermore, be sure that you have set up a proper virtual environment (venv) and that you have run the preprocessing script, etc. 
+
+Remark about Python scripts: Be sure to update some of the corresponding content of the job scripts, if you plan on running the scripts on your own computer. I.e. ensure that the venv name of the jobscript, and the venv that you are using, matches. 
+
+
+OVERVIEW OF THE FILES:
+
+1) Notebook 
+This compiles the code of all the scripts. It will give a more coherent explanation and walk-through of all the codes in the scripts. 
+
+2) pca_script.py
+This is the original FFNN model which was initially trained for the PCA-data. It doesn't have any hyperparameter optimization and the hyperparameters were choosen arbitrarily. 
+
+3) pca_dim_search.py
+This scripts keeps the hyperparameters fixed but tries out various different amounts of PCA components, to test to what degree the dimensionality reduction affects the performance, in order to approximate which PCA component will be the best one for all for all the models. (Note: It was 1000 PCA components).
+This script produces the plot which can be found in
+
+4) multiple_pca_script.py
+Similar to the 'ffnn_search/ffnn_search_v2.py' script. It uses a randomization approach to explore the best hyperparameter setting. 
+
+5) pca_best_model.py
+This script trains and tests the best model, which was found by the 'multiple_pca_script.py' script. It also produces the final script and metrics which were stated in the report. 
+
+
+-----------------
+
+AI disclaimer:
+Google Gemini has specifically been used to prototype and bug fix some of the code in this folder. 
+it is worth noting that we take full responsibility for the final product. Furthermore, all code was manually reviewed before it was implemented. Knowledge and know-how covered in the course curriculum still played a highly crucial role in adjusting the code and results in order to meet a proper academic quality standard. 
+

@@ -48,10 +48,15 @@ DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 AMP       = (DEVICE == "cuda")
 
 # ---- EXPERIMENT SETUP ----
-# We will test these PCA dimensions (number of PCA components)
+#These are the PCA dimensions (number of PCA components) which will be tested:
 PCA_DIMS_TO_TEST = [100, 500, 1000, 2000, 3000, 5000, 10000]
 
-# Fixed Hyperparameters (The "Control" Group)
+#The script will try to find the PCA components which give the best performance. 
+
+
+#Fixed Hyperparameters - the only thing which will change is the PCA input dimensions.
+#These fixed hyperparameters were chosen based on prior experimentation and a small mix of arbitrary choices. 
+
 FIXED_HP = {
     "hidden": [1024, 512],
     "act": "gelu",
@@ -130,7 +135,7 @@ Y_train = scaler_y.transform(Y_train)
 Y_val   = scaler_y.transform(Y_val)
 Y_test  = scaler_y.transform(Y_test)
 
-# 3. PCA (Max Dimension Strategy)
+# 3. PCA (Using the highest PCA dimension to fit once)
 max_dim = max(PCA_DIMS_TO_TEST)
 print(f"[INFO] Fitting PCA with n_components={max_dim} (Max required)...")
 pca = PCA(n_components=max_dim).fit(X_train) #We only wanna calculate the PCA once. Therefore we are using the max dimensions. 
@@ -139,7 +144,7 @@ X_train_pca = pca.transform(X_train)
 X_val_pca   = pca.transform(X_val)
 X_test_pca  = pca.transform(X_test)
 
-# 4. To Tensor (Full Max Dim)
+# 4. To Tensor (again, remember, we are using the max dimensions here, as there is no point in recalculating PCA multiple times)
 Xt_train_full = torch.tensor(X_train_pca, dtype=torch.float32)
 Xt_val_full   = torch.tensor(X_val_pca,   dtype=torch.float32)
 Xt_test_full  = torch.tensor(X_test_pca,  dtype=torch.float32)
@@ -151,6 +156,9 @@ Yt_test  = torch.tensor(Y_test,  dtype=torch.float32)
 # ------------------------------
 # Model Definition
 # ------------------------------
+
+#Defining activation function and FFNN class - the model will be a bit further defined in the train_and_evaluate function:
+
 def get_activation(name: str):
     if name == "relu": return nn.ReLU()
     if name == "gelu": return nn.GELU()
@@ -174,6 +182,8 @@ class FFNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+##########################################
+
 # ------------------------------
 # Training Function
 # ------------------------------
@@ -190,14 +200,14 @@ def train_and_evaluate(current_pca_dim):
     va_loader = DataLoader(TensorDataset(xt_va, Yt_val),   batch_size=FIXED_HP["batch_size"], shuffle=False)
     te_loader = DataLoader(TensorDataset(xt_te, Yt_test),  batch_size=FIXED_HP["batch_size"], shuffle=False)
 
-    # Model
+    #Model - defines the model, optimizer, scheduler, criterion, scaler. 
     model = FFNN(current_pca_dim, Y.shape[1], FIXED_HP).to(DEVICE)
     opt = optim.AdamW(model.parameters(), lr=FIXED_HP["lr"], weight_decay=1e-4)
     sch = optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=2)
     criterion = nn.MSELoss()
     scaler = torch.cuda.amp.GradScaler(enabled=AMP)
 
-    # Loop
+    #Loop for training: 
     train_curve, val_curve = [], []
     t0 = time.time()
     
@@ -220,7 +230,7 @@ def train_and_evaluate(current_pca_dim):
             counts += yb.size(0)
         train_curve.append(loss_sum/counts)
 
-        # Validation
+        #Validation
         if epoch == 1 or epoch % EVAL_EVERY == 0 or epoch == FIXED_HP["epochs"]:
             model.eval()
             vloss_sum, vcounts = 0.0, 0
@@ -235,7 +245,7 @@ def train_and_evaluate(current_pca_dim):
             sch.step(val_loss)
             print(f"[PCA {current_pca_dim}] ep {epoch:02d} | val_scaled {val_loss:.4f}")
 
-    # Final Test (Unscaled)
+    #Final Test (on unscaled data)
     model.eval()
     preds_list, targs_list = [], []
     with torch.no_grad():
@@ -248,13 +258,13 @@ def train_and_evaluate(current_pca_dim):
     P_scaled = np.vstack(preds_list)
     T_scaled = np.vstack(targs_list)
     
-    # Inverse Transform
+    #Inverse Transform to log1p space (Back to original scale)
     P_log1p = scaler_y.inverse_transform(P_scaled)
     T_log1p = scaler_y.inverse_transform(T_scaled)
     
     final_mse = ((P_log1p - T_log1p)**2).mean()
     
-    # Save training curve for this specific dim
+    #Save training curve for this specific PCA dimension: 
     pathlib.Path(TRIAL_FIG_DIR).mkdir(parents=True, exist_ok=True)
     plt.figure()
     plt.plot(train_curve, label="Train")
@@ -264,16 +274,18 @@ def train_and_evaluate(current_pca_dim):
     plt.savefig(os.path.join(TRIAL_FIG_DIR, f"curve_pca_{current_pca_dim}.png"))
     plt.close()
 
-    # [FIX] Explicitly cast to standard python float() for JSON safety
+    #Explicitly cast to standard python float() for JSON safety. Otherwise numpy float types will cause an error!!
     return {
-        "pca_dim": int(current_pca_dim), # Cast to int
-        "test_mse_unscaled": float(final_mse), # Cast to float
-        "test_mse_scaled": float(((P_scaled - T_scaled)**2).mean()), # Cast to float
+        "pca_dim": int(current_pca_dim), #Cast to int
+        "test_mse_unscaled": float(final_mse), #Cast to float
+        "test_mse_scaled": float(((P_scaled - T_scaled)**2).mean()), #Cast to float
         "time_sec": round(time.time() - t0, 1)
     }
 
+#############################################
+
 # ------------------------------
-# Main Sweep Loop
+# Main Sweep Loop - test out the PCA dimensions that were inputted in the config section
 # ------------------------------
 results = []
 

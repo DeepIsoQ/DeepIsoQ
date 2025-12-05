@@ -55,7 +55,7 @@ nvidia-smi
 # If you didn't set BULKFORMER_PT in your env, do it here:
 export BULKFORMER_PT="$BLACKHOLE/$USER/bulkformer_result.pt"
 
-python ~/DeepIsoQ/Bulkformer/ffnn_search_bulkformer/results/ffnn_search_bulkformer.py
+python ~/DeepIsoQ/Bulkformer/ffnn_search_bulkformer/ffnn_search_bulkformer.py
 
 echo "=== Job finished on $(date) ==="
 

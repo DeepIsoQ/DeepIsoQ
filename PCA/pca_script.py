@@ -29,7 +29,7 @@ N_EPOCHS        = 30
 LR              = 1e-3
 
 # ------------------------------
-# Dynamic Output Paths (Fingerprinting)
+# Dynamic Output Paths
 # ------------------------------
 # Try to get the LSF Job ID. If running locally, use a timestamp.
 JOB_ID = os.environ.get("LSB_JOBID")
@@ -48,7 +48,7 @@ CSV_PATH        = os.path.join(OUT_DIR, f"pca_training_log_{JOB_ID}.csv")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # ------------------------------
-# Reproducibility
+# Seed | Ensuring reproducibility
 # ------------------------------
 torch.manual_seed(SEED)
 np.random.seed(SEED)
@@ -196,7 +196,7 @@ for epoch in range(N_EPOCHS):
 total_time = time.time() - start_time
 
 # ------------------------------
-# Final Test Evaluation (UNSCALED)
+# Final Test Evaluation (unscaled data)
 # ------------------------------
 
 #Note: In order to make the model comparable to the non-PCA script, we need to inverse transform
