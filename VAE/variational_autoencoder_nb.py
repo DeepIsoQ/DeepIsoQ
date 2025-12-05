@@ -244,7 +244,7 @@ in the encoder and decoder using relu units as non-linearity.
 
 class VariationalAutoencoder(nn.Module):
     """A Variational Autoencoder with
-    * a Gaussian likelihood observation model `p_\theta(x | z) = NB(x | \mu_\theta(z), \theta_\theta(z) I)
+    * a Negative Binomial likelihood observation model `p_\theta(x | z) = NB(x | \mu_\theta(z), \theta_\theta(z) I)
     * a Gaussian prior `p(z) = N(z | 0, I)`
     * a Gaussian posterior `q_\phi(z|x) = N(z | \mu(x), \sigma(x))`
     """
@@ -391,10 +391,10 @@ class VariationalAutoencoder(nn.Module):
 
 # ---- initialize the VAE -----
 # Define internal hidden dimensions
-H1 = 640
-H2 = 320  
-H3 = 160
-latent_features = 80
+H1 = 2048
+H2 = 1024  
+H3 = 512
+latent_features = 256
 vae = VariationalAutoencoder(torch.Size([G]), latent_features)
 print(f"[INFO] latent features: {latent_features}, hidden layers: {H1}, {H2}, {H3}")
 
@@ -403,8 +403,6 @@ Implementation of the ELBO and beta ELBO
 """
 
 def reduce(x:Tensor) -> Tensor:
-    """for each datapoint: get the mean over all dimensions. 
-    Change from previously where we got the sum over all dimensions."""
     return x.view(x.size(0), -1).sum(dim=1)
 
 class VariationalInference(nn.Module):
@@ -549,7 +547,7 @@ while epoch < num_epochs:
 
     # Reproduce the figure from the begining of the notebook, plot the training curves and show latent samples
     if epoch == num_epochs:
-        fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}.png")
+        fig_path = os.path.join(FIG_DIR, f"vae_training_epoch{epoch:03d}_ld{latent_features}.png")
         fig_path = get_unique_path(fig_path)  
         make_vae_plots(vae, x, outputs, training_data, validation_data,
                     save_path=fig_path)
